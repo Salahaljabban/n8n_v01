@@ -1,13 +1,13 @@
 # N8N-Wazuh Integration Deployment Guide
 
 ## Overview
-This guide provides step-by-step instructions for deploying the N8N-Wazuh SIEM integration with a three-tier architecture using a bridge server.
+This guide provides step-by-step instructions for deploying the N8N-Wazuh SIEM integration with direct two-tier architecture.
 
 ## Prerequisites
 - Docker and Docker Compose installed
 - N8N, Foundation-Sec AI, and Ollama services running
-- Bridge server (192.168.30.100) with Python Flask API
-- Wazuh server accessible from bridge server
+- Direct network connectivity to Wazuh server at 172.20.18.14:55000
+- Valid Wazuh API credentials
 
 ## Deployment Steps
 
@@ -35,16 +35,13 @@ docker-compose ps
 3. Import each workflow file in this order:
 
    **Core Workflows:**
-   - `wazuh-bridge-auth-workflow.json` - Bridge server authentication
-   - `wazuh-webhook-receiver-workflow.json` - Real-time alert receiver
-   - `wazuh-alert-monitoring-workflow.json` - Periodic alert polling
+   - `wazuh-alert-monitoring-workflow.json` - Direct Wazuh API alert monitoring
+   - `wazuh-direct-webhook-receiver-workflow.json` - Real-time alert receiver
+   - `n8n-ollama-workflow.json` - AI-powered chat integration
    
    **Processing Workflows:**
    - `wazuh-high-priority-alert-workflow.json` - AI-powered alert analysis
    - `wazuh-incident-response-workflow.json` - Automated response actions
-   
-   **Monitoring Workflows:**
-   - `wazuh-bridge-health-monitoring-workflow.json` - Bridge server health checks
 
 #### Method 2: Copy-Paste Import
 1. Open each `.json` file in a text editor
@@ -59,65 +56,99 @@ For each imported workflow:
 
 1. **Open the workflow** in N8N editor
 2. **Review and update credentials:**
-   - Bridge server API key: `wazuh-bridge-api-key`
+   - Wazuh API credentials (username/password)
    - Slack webhook URLs (if using Slack notifications)
    - Email SMTP settings (if using email notifications)
 
 3. **Update endpoint URLs if needed:**
-   - Bridge server: `http://192.168.30.100:5000`
+   - Wazuh API: `https://172.20.18.14:55000`
    - Foundation-Sec AI: `http://foundation-sec-ai:11434`
-   - Wazuh API: Configure on bridge server
+   - Ollama API: `http://foundation-sec-ai:11434`
 
 4. **Save the workflow**
 5. **Activate the workflow** using the toggle switch in top-right
 
-### 5. Bridge Server Setup
+### 5. Direct Wazuh Integration Setup
 
-The bridge server acts as an intermediary between N8N and Wazuh, providing:
-- API key authentication
-- Alert buffering and optimization
-- Health monitoring
-- Memory-efficient operations (optimized for 4GB RAM)
-- Cross-platform support (Linux and Windows Server)
+The direct integration connects N8N workflows directly to Wazuh API, providing:
+- Direct API authentication with Wazuh
+- Real-time alert processing
+- Simplified architecture
+- Reduced latency and complexity
+- Enhanced security through direct encrypted communication
 
-#### Platform-Specific Deployment
+#### Configuration Steps
 
-**Windows Server Deployment (Recommended for 192.168.30.100)**
+**Wazuh API Configuration**
 
-For Windows Server 2019/2022 deployment, see the dedicated Windows Deployment Guide.
-
-Quick Windows installation:
-```cmd
-# Download installation files to Windows Server
-mkdir C:\WazuhBridge\install
-cd C:\WazuhBridge\install
-
-# Run automated installation as Administrator
-install.bat
-
-# Verify installation
-manage-service.bat status
-manage-service.bat test
+1. **Verify Wazuh API Access**:
+```bash
+# Test Wazuh API connectivity
+curl -k -X POST "https://172.20.18.14:55000/security/user/authenticate" \
+     -H "Content-Type: application/json" \
+     -d '{"username":"admin","password":"admin"}'
 ```
 
-#### Linux Deployment (Alternative)
-
-#### Install Bridge Server on 192.168.30.100
+2. **Configure N8N Environment Variables**:
 ```bash
-# On the bridge server (192.168.30.100)
-sudo apt update
-sudo apt install python3 python3-pip nginx -y
+# Set Wazuh API credentials in N8N
+export WAZUH_API_URL="https://172.20.18.14:55000"
+export WAZUH_USERNAME="admin"
+export WAZUH_PASSWORD="admin"
+```
 
-# Create application directory
-sudo mkdir -p /opt/wazuh-bridge
-cd /opt/wazuh-bridge
+#### Direct Integration Testing
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
+**Test Direct Wazuh API Connection**
+```bash
+# Test authentication
+curl -k -X POST "https://172.20.18.14:55000/security/user/authenticate" \
+     -H "Content-Type: application/json" \
+     -d '{"username":"admin","password":"admin"}'
 
-# Install dependencies
-pip install flask gunicorn requests python-dotenv psutil
+# Test API endpoints
+curl -k -X GET "https://172.20.18.14:55000/" \
+     -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Test alerts endpoint
+curl -k -X GET "https://172.20.18.14:55000/alerts" \
+     -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+#### N8N Workflow Configuration
+
+**Configure Direct Wazuh API Nodes:**
+
+1. **HTTP Request Node Configuration for Wazuh Authentication:**
+```json
+{
+  "method": "POST",
+  "url": "https://172.20.18.14:55000/security/user/authenticate",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "username": "admin",
+    "password": "admin"
+  },
+  "options": {
+    "allowUnauthorizedCerts": true
+  }
+}
+```
+
+2. **HTTP Request Node Configuration for Alert Retrieval:**
+```json
+{
+  "method": "GET",
+  "url": "https://172.20.18.14:55000/alerts",
+  "headers": {
+    "Authorization": "Bearer {{$node['Wazuh Auth'].json['data']['token']}}"
+  },
+  "options": {
+    "allowUnauthorizedCerts": true
+  }
+}
 ```
 
 #### Create Bridge Server Application
@@ -349,6 +380,23 @@ ReadWritePaths=/opt/wazuh-bridge/logs
 WantedBy=multi-user.target
 ```
 
+**Environment Variables Configuration:**
+
+Add these environment variables to your N8N deployment:
+
+```bash
+# N8N Environment Configuration
+export WAZUH_API_URL="https://172.20.18.14:55000"
+export WAZUH_USERNAME="admin"
+export WAZUH_PASSWORD="admin"
+export WAZUH_API_TIMEOUT="30000"
+export WAZUH_MAX_RETRIES="3"
+export WAZUH_REQUEST_TIMEOUT="10000"
+
+# Restart N8N to apply changes
+docker-compose restart n8n
+```
+
 #### Start Bridge Server
 ```bash
 # Create user and directories
@@ -366,6 +414,23 @@ sudo systemctl start wazuh-bridge
 
 # Check status
 sudo systemctl status wazuh-bridge
+```
+
+**Workflow Testing:**
+
+Test your direct integration workflows:
+
+```bash
+# Test workflow execution via N8N API
+curl -X POST "http://localhost:5678/webhook/test-wazuh" \
+     -H "Content-Type: application/json" \
+     -d '{"test": true}'
+
+# Check N8N logs for any errors
+docker logs n8n
+
+# Monitor workflow executions in N8N UI
+# Navigate to: http://localhost:5678/executions
 ```
 
 ### 6. Test Integration

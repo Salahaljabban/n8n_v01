@@ -4,53 +4,54 @@ A comprehensive security automation platform that integrates N8N workflow automa
 
 ## 🏗️ Architecture Overview
 
-This project implements a **direct two-tier security monitoring architecture** that integrates N8N workflow automation directly with Wazuh SIEM:
+This integration implements a comprehensive three-tier architecture:
 
-```
-N8N Workflows ←→ Wazuh SIEM
-(172.20.18.13)   (172.20.18.14:55000)
-```
-
-### Architecture Layers
-
-1. **N8N Automation Layer** (`172.20.18.13`)
-   - Workflow orchestration and automation
-   - Direct Wazuh API integration
-   - Alert processing and response automation
-   - Integration with external systems
-
-2. **Wazuh SIEM Layer** (`172.20.18.14:55000`)
-   - Security event collection and analysis
-   - Alert generation and management
-   - RESTful API for direct integration
-   - Compliance reporting and dashboards
+1. **N8N Layer** (localhost:5678) - Workflow automation and orchestration
+2. **Bridge Server Layer** (192.168.30.100:5000) - Lightweight proxy on Active Directory server  
+3. **Wazuh SIEM Layer** (172.20.18.14) - Security monitoring and alerting
+4. **Foundation-Sec AI** (foundation-sec-ai:11434) - AI-powered threat analysis
 
 ## 📋 Components
 
 ### Core Services
-- **N8N**: Workflow automation platform with direct Wazuh integration
-- **Wazuh**: Security Information and Event Management (SIEM) with RESTful API
-- **Docker**: Containerization platform for all services
+- **N8N**: Workflow automation platform
+- **Foundation-Sec AI**: Ollama-based security analysis AI
+- **Bridge Server**: Python Flask API proxy (4GB RAM optimized)
+- **Wazuh SIEM**: Security information and event management
 
 ### N8N Workflows
 
-1. **Direct Wazuh Alert Monitoring Workflow** (`wazuh-alert-monitoring-workflow.json`)
-   - Monitors Wazuh alerts through direct API integration
-   - Scheduled polling or webhook triggers
-   - Direct Wazuh API authentication
-   - Real-time alert processing
-   - Alert filtering and categorization
-   - Automated response actions
+1. **Bridge Authentication Workflow** (`wazuh-bridge-auth-workflow.json`)
+   - Handles authentication with Wazuh API via bridge server
+   - Manages API tokens and session management
+   - Webhook trigger: `/webhook/bridge-auth`
 
-2. **Direct Webhook Receiver Workflow** (`wazuh-direct-webhook-receiver-workflow.json`)
-   - Receives and processes webhooks directly from Wazuh
-   - HTTP webhook from Wazuh SIEM
-   - Direct webhook validation and authentication
-   - Alert data processing
-   - Response automation
-   - Error handling and logging
+2. **Alert Monitoring Workflow** (`wazuh-alert-monitoring-workflow.json`)
+   - Polls bridge server every 2 minutes for buffered alerts
+   - Processes and routes alerts based on severity
+   - Includes bridge server health checks
 
-3. **Ollama AI Chat Integration Workflow** (`n8n-ollama-workflow.json`)
+3. **High Priority Alert Workflow** (`wazuh-high-priority-alert-workflow.json`)
+   - Processes critical security alerts with AI analysis
+   - Integrates with Foundation-Sec AI for threat assessment
+   - Webhook trigger: `/webhook/high-priority-alert`
+
+4. **Incident Response Workflow** (`wazuh-incident-response-workflow.json`)
+   - Automated response actions (IP blocking, host quarantine)
+   - Security team notifications and ticket creation
+   - Webhook trigger: `/webhook/incident-response`
+
+5. **Webhook Receiver Workflow** (`wazuh-webhook-receiver-workflow.json`)
+   - Real-time alert reception from Wazuh
+   - Alert normalization and priority routing
+   - Webhook trigger: `/webhook/wazuh-alerts`
+
+6. **Bridge Health Monitoring Workflow** (`wazuh-bridge-health-monitoring-workflow.json`)
+   - Monitors bridge server health every 5 minutes
+   - Tracks system metrics and connectivity
+   - Automated remediation for critical issues
+
+7. **Ollama AI Chat Integration Workflow** (`n8n-ollama-workflow.json`)
    - Integrates AI-powered chat capabilities for security analysis
    - Webhook or manual execution
    - AI-powered security analysis
@@ -115,54 +116,41 @@ WAZUH_API_URL=https://172.20.18.14:55000
 WAZUH_API_USER=wazuh-api-user
 WAZUH_API_PASSWORD=wazuh-api-password
 
-# Direct Wazuh Integration
-WAZUH_API_TIMEOUT=30
-WAZUH_MAX_RETRIES=3
-WAZUH_REQUEST_TIMEOUT=10
+# Bridge Server Configuration
+BRIDGE_SERVER_URL=http://192.168.30.100:5000
+BRIDGE_API_KEY=wazuh-bridge-api-key
 
 # Slack Configuration (Optional)
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
 ```
 
-### Direct Integration Setup
+### Bridge Server Setup
 
-#### Prerequisites
-- N8N instance running on 172.20.18.13
-- Wazuh SIEM accessible at 172.20.18.14:55000
-- Valid Wazuh API credentials
-- Network connectivity between N8N and Wazuh
+On the Active Directory server (192.168.30.100):
 
-#### Configuration Steps
+```bash
+# Install dependencies
+sudo apt update
+sudo apt install python3 python3-pip nginx
 
-1. **Configure Wazuh API Access**:
-   - Ensure Wazuh API is enabled and accessible
-   - Create API user with appropriate permissions
-   - Note down API credentials for N8N configuration
+# Create bridge application
+sudo mkdir -p /opt/wazuh-bridge
+cd /opt/wazuh-bridge
 
-2. **Import N8N Workflows**:
-   ```bash
-   # Import workflows into N8N
-   # Use N8N web interface to import JSON workflow files
-   ```
+# Install Python packages
+pip3 install flask gunicorn requests psutil
 
-3. **Configure Environment Variables**:
-   - Set Wazuh API credentials in N8N
-   - Configure webhook endpoints
-   - Test API connectivity
-
-#### Direct Integration Features
-- **Simplified Architecture**: Direct API communication
-- **Real-time Processing**: Immediate alert handling
-- **Reduced Latency**: No intermediate proxy layer
-- **Enhanced Security**: Direct encrypted communication
-- **Scalability**: Native API rate limiting and load balancing
+# Configure systemd service
+sudo systemctl enable wazuh-bridge
+sudo systemctl start wazuh-bridge
+```
 
 ## 📊 Monitoring and Alerts
 
 ### Health Monitoring
 
-- **Direct Wazuh API Health**: Monitored every 5 minutes
-- **Wazuh Connectivity**: Direct API monitoring
+- **Bridge Server Health**: Monitored every 5 minutes
+- **Wazuh Connectivity**: Continuous monitoring
 - **AI Service Status**: Integrated health checks
 - **Alert Processing Metrics**: Real-time tracking
 
@@ -252,12 +240,10 @@ The test suite validates:
 
 ### Common Issues
 
-1. **Wazuh API Connection Failed**
+1. **Bridge Server Connection Failed**
    ```bash
-   # Test Wazuh API directly
-   curl -k -X POST "https://172.20.18.14:55000/security/user/authenticate" \
-        -H "Content-Type: application/json" \
-        -d '{"username":"your-username","password":"your-password"}'
+   # Check bridge server status
+   curl http://192.168.30.100:5000/api/health
    
    # Check firewall rules
    sudo ufw status
@@ -323,6 +309,5 @@ This project is part of the internal security infrastructure. All rights reserve
 ---
 
 **Status**: ✅ Production Ready  
-**Last Updated**: January 2025  
-**Version**: 1.0.0# n8n
-# n8n_v01
+**Last Updated**: August 2025  
+**Version**: 1.0.0
