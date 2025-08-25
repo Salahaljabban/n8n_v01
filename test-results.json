@@ -1,0 +1,66 @@
+{
+  "timestamp": "2025-08-23T00:36:03.875724",
+  "summary": {
+    "passed": 1,
+    "failed": 6,
+    "warnings": 2,
+    "total": 9,
+    "success_rate": 11.11111111111111
+  },
+  "detailed_results": [
+    {
+      "test_name": "N8N Connectivity",
+      "status": "PASS",
+      "timestamp": "2025-08-23T00:35:28.690495",
+      "details": "N8N server is accessible"
+    },
+    {
+      "test_name": "Bridge Server Connectivity",
+      "status": "WARN",
+      "timestamp": "2025-08-23T00:35:38.697772",
+      "details": "Bridge server not accessible (expected in test env): HTTPConnectionPool(host='192.168.30.100', port=5000): Max retries exceeded with url: /api/health (Ca"
+    },
+    {
+      "test_name": "Foundation-Sec AI Integration",
+      "status": "WARN",
+      "timestamp": "2025-08-23T00:35:38.703729",
+      "details": "AI service accessible but no models available (setup required)"
+    },
+    {
+      "test_name": "Webhook Receiver Workflow",
+      "status": "FAIL",
+      "timestamp": "2025-08-23T00:35:38.805333",
+      "details": "HTTP 404: {\"code\":404,\"message\":\"The requested webhook \\\"POST wazuh-alerts\\\" is not registered.\",\"hint\":\"The workflow must be active for a production URL to run successfully. You can activate the workflow using the toggle in the top-right of the editor. Note that unlike test URL calls, production URL calls aren't shown on the canvas (only in the executions list)\"}"
+    },
+    {
+      "test_name": "Bridge Authentication",
+      "status": "FAIL",
+      "timestamp": "2025-08-23T00:35:38.817504",
+      "details": "HTTP 404: {\"code\":404,\"message\":\"The requested webhook \\\"POST bridge-auth\\\" is not registered.\",\"hint\":\"The workflow must be active for a production URL to run successfully. You can activate the workflow using the toggle in the top-right of the editor. Note that unlike test URL calls, production URL calls aren't shown on the canvas (only in the executions list)\"}"
+    },
+    {
+      "test_name": "Alert Monitoring Workflow",
+      "status": "FAIL",
+      "timestamp": "2025-08-23T00:35:53.835620",
+      "details": "HTTPConnectionPool(host='192.168.30.100', port=5000): Max retries exceeded with url: /api/alerts (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x7670c459f2f0>, 'Connection to 192.168.30.100 timed out. (connect timeout=15)'))"
+    },
+    {
+      "test_name": "High Priority Alert Workflow",
+      "status": "FAIL",
+      "timestamp": "2025-08-23T00:35:53.849703",
+      "details": "HTTP 404: {\"code\":404,\"message\":\"The requested webhook \\\"POST high-priority-alert\\\" is not registered.\",\"hint\":\"The workflow must be active for a production URL to run successfully. You can activate the workflow using the toggle in the top-right of the editor. Note that unlike test URL calls, production URL calls aren't shown on the canvas (only in the executions list)\"}"
+    },
+    {
+      "test_name": "Incident Response Workflow",
+      "status": "FAIL",
+      "timestamp": "2025-08-23T00:35:53.862153",
+      "details": "HTTP 404: {\"code\":404,\"message\":\"The requested webhook \\\"POST incident-response\\\" is not registered.\",\"hint\":\"The workflow must be active for a production URL to run successfully. You can activate the workflow using the toggle in the top-right of the editor. Note that unlike test URL calls, production URL calls aren't shown on the canvas (only in the executions list)\"}"
+    },
+    {
+      "test_name": "Bridge Health Monitoring",
+      "status": "FAIL",
+      "timestamp": "2025-08-23T00:36:03.875121",
+      "details": "HTTPConnectionPool(host='192.168.30.100', port=5000): Max retries exceeded with url: /api/health (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x7670c45d00e0>, 'Connection to 192.168.30.100 timed out. (connect timeout=10)'))"
+    }
+  ]
+}

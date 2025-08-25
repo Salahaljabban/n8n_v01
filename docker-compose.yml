@@ -1,0 +1,75 @@
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=UTC
+    volumes:
+      - ./n8n-data:/home/node/.n8n
+    networks:
+      - n8n-network
+    depends_on:
+      - ollama
+      - foundation-sec
+
+  foundation-sec:
+    build:
+      context: .
+      dockerfile: foundation-sec-dockerfile
+    container_name: foundation-sec-8b
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - TRANSFORMERS_CACHE=/app/cache
+      - HF_HOME=/app/cache
+    volumes:
+      - foundation_sec_cache:/app/cache
+    networks:
+      - n8n-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: foundation-sec-ai
+    restart: always
+    ports:
+      - "11434:11434"
+    mem_limit: 12g
+    memswap_limit: 12g
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_PORT=11434
+      - OLLAMA_ORIGINS=http://localhost:5678,http://localhost:3000
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - n8n-network
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  ollama_data:
+    driver: local
+  foundation_sec_cache:
+    driver: local
+
+networks:
+  n8n-network:
+    driver: bridge

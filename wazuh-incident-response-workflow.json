@@ -1,0 +1,441 @@
+{
+  "name": "Automated Incident Response",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "incident-response",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "incident-response-webhook",
+      "name": "Incident Response Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "incident-response"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate incident data and prepare response actions\nconst incident = $input.first().json;\n\nif (!incident.alert_id || !incident.ai_analysis) {\n  throw new Error('Invalid incident data: missing alert_id or ai_analysis');\n}\n\nconst actions = incident.ai_analysis.recommended_actions || [];\nconst threatLevel = incident.ai_analysis.threat_level || 'medium';\nconst sourceIP = incident.agent_ip || incident.threat_indicators?.source_ip;\n\n// Prepare incident response plan\nconst responseActions = {\n  block_ip: actions.includes('block_ip'),\n  send_notification: actions.includes('send_notification') || threatLevel === 'critical',\n  manual_investigation: actions.includes('manual_investigation'),\n  quarantine_host: actions.includes('quarantine_host') || threatLevel === 'critical',\n  collect_forensics: threatLevel === 'critical' || threatLevel === 'high'\n};\n\nreturn {\n  ...incident,\n  response_plan: responseActions,\n  source_ip: sourceIP,\n  incident_id: `INC-${Date.now()}-${incident.alert_id}`,\n  response_timestamp: new Date().toISOString(),\n  escalation_required: threatLevel === 'critical'\n};"
+      },
+      "id": "prepare-response-plan",
+      "name": "Prepare Response Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "should-block-ip",
+              "leftValue": "={{ $json.response_plan.block_ip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-ip-blocking",
+      "name": "Check IP Blocking",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://172.20.18.14:55000/active-response",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "requestMethod": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.wazuhApi.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"command\": \"firewall-drop\",\n  \"arguments\": [\"{{ $json.source_ip }}\"],\n  \"alert\": {\n    \"rule\": {\n      \"id\": \"{{ $json.rule_id }}\"\n    },\n    \"agent\": {\n      \"id\": \"{{ $json.agent_id }}\"\n    }\n  }\n}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 2,
+            "retryInterval": 5000
+          }
+        }
+      },
+      "id": "block-ip-address",
+      "name": "Block IP Address",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "should-quarantine",
+              "leftValue": "={{ $json.response_plan.quarantine_host }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-quarantine",
+      "name": "Check Quarantine",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "url": "https://172.20.18.14:55000/active-response",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "requestMethod": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.wazuhApi.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"command\": \"host-deny\",\n  \"arguments\": [\"{{ $json.agent_name }}\"],\n  \"alert\": {\n    \"rule\": {\n      \"id\": \"{{ $json.rule_id }}\"\n    },\n    \"agent\": {\n      \"id\": \"{{ $json.agent_id }}\"\n    }\n  }\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "quarantine-host",
+      "name": "Quarantine Host",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create comprehensive security notification\nconst incident = $input.first().json;\nconst aiAnalysis = incident.ai_analysis;\nconst responsePlan = incident.response_plan;\n\n// Determine notification urgency\nconst urgency = incident.escalation_required ? 'CRITICAL' : 'HIGH';\nconst color = incident.escalation_required ? '#FF0000' : '#FFA500';\n\n// Create detailed notification\nconst notification = {\n  channel: '#security-alerts',\n  username: 'Wazuh Security Bot',\n  icon_emoji: ':warning:',\n  attachments: [\n    {\n      color: color,\n      title: `${urgency} Security Incident - ${incident.incident_id}`,\n      title_link: `https://wazuh.company.com/alerts/${incident.alert_id}`,\n      fields: [\n        {\n          title: 'Alert ID',\n          value: incident.alert_id,\n          short: true\n        },\n        {\n          title: 'Threat Level',\n          value: aiAnalysis.threat_level.toUpperCase(),\n          short: true\n        },\n        {\n          title: 'Source IP',\n          value: incident.source_ip || 'Unknown',\n          short: true\n        },\n        {\n          title: 'Affected Agent',\n          value: incident.agent_name || 'Unknown',\n          short: true\n        },\n        {\n          title: 'Rule Description',\n          value: incident.rule_description,\n          short: false\n        },\n        {\n          title: 'AI Analysis',\n          value: aiAnalysis.analysis_text.substring(0, 300) + '...',\n          short: false\n        }\n      ],\n      footer: 'Wazuh SIEM',\n      ts: Math.floor(Date.now() / 1000)\n    }\n  ]\n};\n\n// Add actions taken\nconst actionsTaken = [];\nif (responsePlan.block_ip) actionsTaken.push('🚫 IP Blocked');\nif (responsePlan.quarantine_host) actionsTaken.push('🔒 Host Quarantined');\nif (responsePlan.collect_forensics) actionsTaken.push('🔍 Forensics Collected');\n\nif (actionsTaken.length > 0) {\n  notification.attachments[0].fields.push({\n    title: 'Automated Actions Taken',\n    value: actionsTaken.join('\\n'),\n    short: false\n  });\n}\n\nreturn {\n  notification: notification,\n  incident_summary: {\n    incident_id: incident.incident_id,\n    alert_id: incident.alert_id,\n    threat_level: aiAnalysis.threat_level,\n    actions_taken: actionsTaken,\n    notification_sent: true,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "create-security-notification",
+      "name": "Create Security Notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "should-collect-forensics",
+              "leftValue": "={{ $json.response_plan.collect_forensics }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-forensics",
+      "name": "Check Forensics",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://172.20.18.14:55000/agents/{{ $json.agent_id }}/stats/logcollector",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "requestMethod": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.wazuhApi.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "collect-forensics",
+      "name": "Collect Forensics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create incident ticket in ticketing system\nconst incident = $input.first().json;\nconst aiAnalysis = incident.ai_analysis;\n\nconst ticketData = {\n  title: `Security Incident: ${incident.rule_description}`,\n  description: `**Incident ID:** ${incident.incident_id}\\n**Alert ID:** ${incident.alert_id}\\n**Threat Level:** ${aiAnalysis.threat_level}\\n**Source IP:** ${incident.source_ip}\\n**Affected Agent:** ${incident.agent_name}\\n\\n**AI Analysis:**\\n${aiAnalysis.analysis_text}\\n\\n**Recommended Actions:**\\n${aiAnalysis.recommended_actions.join(', ')}\\n\\n**Automated Actions Taken:**\\n- IP Blocking: ${incident.response_plan.block_ip ? 'Yes' : 'No'}\\n- Host Quarantine: ${incident.response_plan.quarantine_host ? 'Yes' : 'No'}\\n- Forensics Collection: ${incident.response_plan.collect_forensics ? 'Yes' : 'No'}`,\n  priority: aiAnalysis.threat_level === 'critical' ? 'P1' : 'P2',\n  category: 'Security Incident',\n  subcategory: 'Automated Detection',\n  assignee: 'security-team',\n  tags: ['wazuh', 'automated', 'ai-analysis', aiAnalysis.threat_level]\n};\n\nreturn {\n  ticket: ticketData,\n  incident_id: incident.incident_id,\n  requires_manual_review: incident.response_plan.manual_investigation\n};"
+      },
+      "id": "create-incident-ticket",
+      "name": "Create Incident Ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compile final incident response report\nconst inputs = $input.all();\nconst originalIncident = $('Prepare Response Plan').first().json;\n\n// Collect results from all response actions\nlet ipBlocked = false;\nlet hostQuarantined = false;\nlet forensicsCollected = false;\nlet notificationSent = false;\nlet ticketCreated = false;\n\n// Process results from different branches\ninputs.forEach(input => {\n  if (input.json.ip_blocked) ipBlocked = true;\n  if (input.json.host_quarantined) hostQuarantined = true;\n  if (input.json.forensics_collected) forensicsCollected = true;\n  if (input.json.notification_sent) notificationSent = true;\n  if (input.json.ticket_created) ticketCreated = true;\n});\n\nconst responseReport = {\n  incident_id: originalIncident.incident_id,\n  alert_id: originalIncident.alert_id,\n  response_timestamp: originalIncident.response_timestamp,\n  completion_timestamp: new Date().toISOString(),\n  threat_level: originalIncident.ai_analysis.threat_level,\n  actions_completed: {\n    ip_blocked: ipBlocked,\n    host_quarantined: hostQuarantined,\n    forensics_collected: forensicsCollected,\n    notification_sent: notificationSent,\n    ticket_created: ticketCreated\n  },\n  escalation_required: originalIncident.escalation_required,\n  manual_review_required: originalIncident.response_plan.manual_investigation,\n  response_status: 'completed',\n  processing_duration: Date.now() - new Date(originalIncident.response_timestamp).getTime()\n};\n\nconsole.log(`Incident response completed for ${originalIncident.incident_id}`);\nconsole.log(`Actions taken: ${Object.entries(responseReport.actions_completed).filter(([k,v]) => v).map(([k,v]) => k).join(', ')}`);\n\nreturn responseReport;"
+      },
+      "id": "compile-response-report",
+      "name": "Compile Response Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "Incident Response Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare Response Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Response Plan": {
+      "main": [
+        [
+          {
+            "node": "Check IP Blocking",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Quarantine",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Security Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check IP Blocking": {
+      "main": [
+        [
+          {
+            "node": "Block IP Address",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Compile Response Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Quarantine": {
+      "main": [
+        [
+          {
+            "node": "Quarantine Host",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Compile Response Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Block IP Address": {
+      "main": [
+        [
+          {
+            "node": "Compile Response Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quarantine Host": {
+      "main": [
+        [
+          {
+            "node": "Compile Response Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Security Notification": {
+      "main": [
+        [
+          {
+            "node": "Check Forensics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Forensics": {
+      "main": [
+        [
+          {
+            "node": "Collect Forensics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Incident Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Incident Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Forensics": {
+      "main": [
+        [
+          {
+            "node": "Compile Response Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Incident Ticket": {
+      "main": [
+        [
+          {
+            "node": "Compile Response Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile Response Report": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "timezone": "UTC",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "wazuh-direct-incident-response-workflow",
+  "tags": [
+    {
+      "createdAt": "2025-01-21T18:00:00.000Z",
+      "updatedAt": "2025-01-21T18:00:00.000Z",
+      "id": "wazuh-integration",
+      "name": "Wazuh Integration"
+    },
+    {
+      "createdAt": "2025-01-21T18:00:00.000Z",
+      "updatedAt": "2025-01-21T18:00:00.000Z",
+      "id": "incident-response",
+      "name": "Incident Response"
+    },
+    {
+      "createdAt": "2025-01-21T18:00:00.000Z",
+      "updatedAt": "2025-01-21T18:00:00.000Z",
+      "id": "automation",
+      "name": "Automation"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+FROM huggingface.co/fdtn-ai/Foundation-Sec-8B
+
+TEMPLATE """{{ if .System }}<|start_header_id|>system<|end_header_id|>
+
+{{ .System }}<|eot_id|>{{ end }}{{ if .Prompt }}<|start_header_id|>user<|end_header_id|>
+
+{{ .Prompt }}<|eot_id|>{{ end }}<|start_header_id|>assistant<|end_header_id|>
+
+"""
+
+SYSTEM """You are Foundation-Sec-8B, a cybersecurity-specialized AI assistant. You are designed to help with security-related tasks including threat detection, vulnerability assessment, security automation, and attack simulation. You understand security concepts, terminology, and practices across multiple security domains."""
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER top_k 40
+PARAMETER repeat_penalty 1.1
+PARAMETER num_ctx 4096

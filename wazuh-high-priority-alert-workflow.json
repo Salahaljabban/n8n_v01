@@ -1,0 +1,316 @@
+{
+  "name": "High Priority Security Alert Processing",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "high-priority-alert",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "high-priority-webhook",
+      "name": "High Priority Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "high-priority-alert"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate and enrich high priority alert\nconst alert = $input.first().json;\n\nif (!alert.alert_id || !alert.rule_description) {\n  throw new Error('Invalid alert data: missing required fields');\n}\n\n// Enrich alert with additional context\nconst enrichedAlert = {\n  ...alert,\n  received_at: new Date().toISOString(),\n  processing_priority: 'high',\n  requires_ai_analysis: true,\n  threat_indicators: {\n    source_ip: alert.agent_ip || 'unknown',\n    rule_level: alert.rule_level || 0,\n    agent_name: alert.agent_name || 'unknown',\n    location: alert.location || 'unknown'\n  },\n  ai_analysis_prompt: `Analyze this high-priority security alert:\n\nRule: ${alert.rule_description}\nSeverity Level: ${alert.rule_level}\nAgent: ${alert.agent_name}\nSource IP: ${alert.agent_ip}\nFull Log: ${alert.full_log}\n\nProvide threat assessment, potential impact, and recommended response actions.`\n};\n\nreturn enrichedAlert;"
+      },
+      "id": "enrich-alert",
+      "name": "Enrich Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://foundation-sec-ai:8000/analyze",
+        "authentication": "none",
+        "requestMethod": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"prompt\": \"{{ $json.ai_analysis_prompt }}\",\n  \"context\": {\n    \"alert_id\": \"{{ $json.alert_id }}\",\n    \"severity\": \"{{ $json.severity }}\",\n    \"rule_level\": {{ $json.rule_level }},\n    \"agent_name\": \"{{ $json.agent_name }}\",\n    \"source_ip\": \"{{ $json.agent_ip }}\"\n  },\n  \"analysis_type\": \"security_threat_assessment\"\n}",
+        "options": {
+          "timeout": 45000,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 2,
+            "retryInterval": 3000
+          }
+        }
+      },
+      "id": "foundation-sec-analysis",
+      "name": "Foundation-Sec Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process AI analysis results\nconst aiResponse = $input.first().json;\nconst originalAlert = $('Enrich Alert').first().json;\n\nlet threatLevel = 'medium';\nlet recommendedActions = [];\nlet aiAnalysis = '';\n\nif (aiResponse && aiResponse.analysis) {\n  aiAnalysis = aiResponse.analysis;\n  \n  // Extract threat level from AI response\n  if (aiAnalysis.toLowerCase().includes('critical') || aiAnalysis.toLowerCase().includes('severe')) {\n    threatLevel = 'critical';\n  } else if (aiAnalysis.toLowerCase().includes('high') || aiAnalysis.toLowerCase().includes('urgent')) {\n    threatLevel = 'high';\n  } else if (aiAnalysis.toLowerCase().includes('low') || aiAnalysis.toLowerCase().includes('minimal')) {\n    threatLevel = 'low';\n  }\n  \n  // Extract recommended actions\n  if (aiAnalysis.toLowerCase().includes('block') || aiAnalysis.toLowerCase().includes('isolate')) {\n    recommendedActions.push('block_ip');\n  }\n  if (aiAnalysis.toLowerCase().includes('investigate') || aiAnalysis.toLowerCase().includes('review')) {\n    recommendedActions.push('manual_investigation');\n  }\n  if (aiAnalysis.toLowerCase().includes('notify') || aiAnalysis.toLowerCase().includes('alert')) {\n    recommendedActions.push('send_notification');\n  }\n}\n\nreturn {\n  ...originalAlert,\n  ai_analysis: {\n    analysis_text: aiAnalysis,\n    threat_level: threatLevel,\n    recommended_actions: recommendedActions,\n    confidence_score: aiResponse.confidence || 0.8,\n    analysis_timestamp: new Date().toISOString()\n  },\n  processing_status: 'ai_analysis_complete',\n  next_action_required: recommendedActions.length > 0\n};"
+      },
+      "id": "process-ai-analysis",
+      "name": "Process AI Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "critical-threat",
+              "leftValue": "={{ $json.ai_analysis.threat_level }}",
+              "rightValue": "critical",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-threat-level",
+      "name": "Check Threat Level",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://n8n:5678/webhook/incident-response",
+        "authentication": "none",
+        "requestMethod": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "trigger-incident-response",
+      "name": "Trigger Incident Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create Slack notification for high priority alert\nconst alert = $input.first().json;\nconst aiAnalysis = alert.ai_analysis;\n\nconst slackMessage = {\n  text: `🚨 High Priority Security Alert - ${alert.rule_description}`,\n  blocks: [\n    {\n      \"type\": \"header\",\n      \"text\": {\n        \"type\": \"plain_text\",\n        \"text\": \"🚨 High Priority Security Alert\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"fields\": [\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": `*Alert ID:* ${alert.alert_id}`\n        },\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": `*Threat Level:* ${aiAnalysis.threat_level.toUpperCase()}`\n        },\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": `*Agent:* ${alert.agent_name}`\n        },\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": `*Source IP:* ${alert.agent_ip}`\n        }\n      ]\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": `*Rule:* ${alert.rule_description}\\n*AI Analysis:* ${aiAnalysis.analysis_text.substring(0, 500)}...`\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": `*Recommended Actions:* ${aiAnalysis.recommended_actions.join(', ')}`\n      }\n    }\n  ]\n};\n\nreturn {\n  slack_message: slackMessage,\n  alert_summary: {\n    alert_id: alert.alert_id,\n    threat_level: aiAnalysis.threat_level,\n    notification_sent: true,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "create-slack-notification",
+      "name": "Create Slack Notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log alert processing completion\nconst alert = $input.first().json;\n\nconsole.log(`High priority alert processed: ${alert.alert_id}`);\nconsole.log(`Threat level: ${alert.ai_analysis.threat_level}`);\nconsole.log(`Recommended actions: ${alert.ai_analysis.recommended_actions.join(', ')}`);\n\nreturn {\n  processing_complete: true,\n  alert_id: alert.alert_id,\n  threat_level: alert.ai_analysis.threat_level,\n  actions_taken: alert.ai_analysis.recommended_actions,\n  completion_time: new Date().toISOString(),\n  status: 'success'\n};"
+      },
+      "id": "log-processing-complete",
+      "name": "Log Processing Complete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle AI analysis errors\nconst error = $input.first();\nconst originalAlert = $('Enrich Alert').first().json;\n\nconsole.error('Foundation-Sec AI analysis failed:', error);\n\nreturn {\n  ...originalAlert,\n  ai_analysis: {\n    analysis_text: 'AI analysis failed - manual review required',\n    threat_level: 'high', // Default to high for safety\n    recommended_actions: ['manual_investigation', 'send_notification'],\n    confidence_score: 0.0,\n    analysis_timestamp: new Date().toISOString(),\n    error: true\n  },\n  processing_status: 'ai_analysis_failed',\n  next_action_required: true\n};"
+      },
+      "id": "handle-ai-error",
+      "name": "Handle AI Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 480]
+    }
+  ],
+  "connections": {
+    "High Priority Webhook": {
+      "main": [
+        [
+          {
+            "node": "Enrich Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Alert": {
+      "main": [
+        [
+          {
+            "node": "Foundation-Sec Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Foundation-Sec Analysis": {
+      "main": [
+        [
+          {
+            "node": "Process AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Handle AI Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Check Threat Level",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle AI Error": {
+      "main": [
+        [
+          {
+            "node": "Check Threat Level",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Threat Level": {
+      "main": [
+        [
+          {
+            "node": "Trigger Incident Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Slack Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Incident Response": {
+      "main": [
+        [
+          {
+            "node": "Log Processing Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Slack Notification": {
+      "main": [
+        [
+          {
+            "node": "Log Processing Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Processing Complete": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "timezone": "UTC",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "wazuh-high-priority-alert-workflow",
+  "tags": [
+    {
+      "createdAt": "2025-01-21T18:00:00.000Z",
+      "updatedAt": "2025-01-21T18:00:00.000Z",
+      "id": "wazuh-integration",
+      "name": "Wazuh Integration"
+    },
+    {
+      "createdAt": "2025-01-21T18:00:00.000Z",
+      "updatedAt": "2025-01-21T18:00:00.000Z",
+      "id": "ai-analysis",
+      "name": "AI Analysis"
+    },
+    {
+      "createdAt": "2025-01-21T18:00:00.000Z",
+      "updatedAt": "2025-01-21T18:00:00.000Z",
+      "id": "high-priority",
+      "name": "High Priority"
+    }
+  ]
+}

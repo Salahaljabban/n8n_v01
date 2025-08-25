@@ -1,0 +1,40 @@
+# Python virtual environment
+foundation-sec-env/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# n8n directories
+n8n-data/
+n8n/
+
+# Docker volumes
+.trae/
+
+# Environment files
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
