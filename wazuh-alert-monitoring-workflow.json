@@ -1,5 +1,5 @@
 {
-  "name": "Wazuh Alert Monitoring Direct API",
+  "name": "Wazuh Alert Monitoring",
   "nodes": [
     {
       "parameters": {
@@ -20,7 +20,7 @@
     },
     {
       "parameters": {
-        "url": "https://172.20.18.14:55000/",
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/' }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "requestMethod": "GET",
@@ -28,7 +28,7 @@
           "timeout": 10000
         }
       },
-      "id": "bridge-health-check",
+      "id": "api-health-check",
       "name": "Wazuh API Health Check",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
@@ -36,9 +36,41 @@
     },
     {
       "parameters": {
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate' }}",
+        "authentication": "none",
+        "requestMethod": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"username\": \"{{ $env.WAZUH_API_USER }}\",\n  \"password\": \"{{ $env.WAZUH_API_PASSWORD }}\"\n}",
+        "options": {
+          "timeout": 20000,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 2,
+            "retryInterval": 1000
+          }
+        }
+      },
+      "id": "get-wazuh-token",
+      "name": "Get Wazuh Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 180]
+    },
+    {
+      "parameters": {
         "jsCode": "// Validate Wazuh API health before proceeding\nconst healthResponse = $input.first().json;\nconst sessionData = $('Alert Polling Trigger').first().json;\n\nlet apiHealthy = false;\nlet healthStatus = 'unknown';\n\ntry {\n  // Check if Wazuh API responded successfully\n  if (healthResponse && (healthResponse.status === 200 || healthResponse.statusCode === 200)) {\n    apiHealthy = true;\n    healthStatus = 'healthy';\n  } else {\n    healthStatus = 'error';\n  }\n} catch (error) {\n  console.error('Wazuh API health check failed:', error);\n  healthStatus = 'error';\n}\n\nconsole.log(`Wazuh API health status: ${healthStatus}`);\n\nif (!apiHealthy) {\n  console.warn('Wazuh API is not healthy, skipping alert polling');\n  return {\n    api_healthy: false,\n    health_status: healthStatus,\n    skip_polling: true,\n    session_id: sessionData.session_id,\n    timestamp: new Date().toISOString()\n  };\n}\n\nreturn {\n  api_healthy: true,\n  health_status: healthStatus,\n  proceed_with_polling: true,\n  session_id: sessionData.session_id,\n  timestamp: new Date().toISOString()\n};"
       },
-      "id": "validate-bridge-health",
+      "id": "validate-api-health",
       "name": "Validate API Health",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -46,7 +78,7 @@
     },
     {
       "parameters": {
-        "url": "https://172.20.18.14:55000/alerts",
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/alerts' }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "requestMethod": "GET",
@@ -56,6 +88,10 @@
             {
               "name": "Content-Type",
               "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Get Wazuh Token').first().json.data.token }}"
             }
           ]
         },
@@ -236,7 +272,27 @@
       "main": [
         [
           {
-            "node": "Fetch Buffered Alerts",
+            "node": "Get Wazuh Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Wazuh Token": {
+      "main": [
+        [
+          {
+            "node": "Fetch Wazuh Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Handle API Error",
             "type": "main",
             "index": 0
           }

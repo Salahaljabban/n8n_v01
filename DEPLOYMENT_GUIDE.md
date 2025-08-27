@@ -36,7 +36,7 @@ docker-compose ps
 
    **Core Workflows:**
    - `wazuh-alert-monitoring-workflow.json` - Direct Wazuh API alert monitoring
-   - `wazuh-direct-webhook-receiver-workflow.json` - Real-time alert receiver
+   - `wazuh-webhook-receiver-workflow.json` - Real-time alert receiver
    - `n8n-ollama-workflow.json` - AI-powered chat integration
    
    **Processing Workflows:**
@@ -91,10 +91,10 @@ curl -k -X POST "https://172.20.18.14:55000/security/user/authenticate" \
 
 2. **Configure N8N Environment Variables**:
 ```bash
-# Set Wazuh API credentials in N8N
+# Set Wazuh API credentials in N8N environment
 export WAZUH_API_URL="https://172.20.18.14:55000"
-export WAZUH_USERNAME="admin"
-export WAZUH_PASSWORD="admin"
+export WAZUH_API_USER="<wazuh_username>"
+export WAZUH_API_PASSWORD="<wazuh_password>"
 ```
 
 #### Direct Integration Testing
@@ -123,13 +123,13 @@ curl -k -X GET "https://172.20.18.14:55000/alerts" \
 ```json
 {
   "method": "POST",
-  "url": "https://172.20.18.14:55000/security/user/authenticate",
+  "url": "={{ $env.WAZUH_API_URL + '/security/user/authenticate' }}",
   "headers": {
     "Content-Type": "application/json"
   },
   "body": {
-    "username": "admin",
-    "password": "admin"
+    "username": "{{$env.WAZUH_API_USER}}",
+    "password": "{{$env.WAZUH_API_PASSWORD}}"
   },
   "options": {
     "allowUnauthorizedCerts": true
@@ -141,9 +141,9 @@ curl -k -X GET "https://172.20.18.14:55000/alerts" \
 ```json
 {
   "method": "GET",
-  "url": "https://172.20.18.14:55000/alerts",
+  "url": "={{ $env.WAZUH_API_URL + '/alerts' }}",
   "headers": {
-    "Authorization": "Bearer {{$node['Wazuh Auth'].json['data']['token']}}"
+    "Authorization": "={{ 'Bearer ' + $json.data.token }}"
   },
   "options": {
     "allowUnauthorizedCerts": true
@@ -151,270 +151,27 @@ curl -k -X GET "https://172.20.18.14:55000/alerts" \
 }
 ```
 
-#### Create Bridge Server Application
-Create `/opt/wazuh-bridge/app.py`:
-```python
-from flask import Flask, request, jsonify
-import requests
-import json
-import os
-from datetime import datetime
-import logging
-from logging.handlers import RotatingFileHandler
-import threading
-import time
-import psutil
 
-app = Flask(__name__)
 
-# Configuration
-WAZUH_API_URL = os.getenv('WAZUH_API_URL', 'https://172.20.18.14:55000')
-WAZUH_USERNAME = os.getenv('WAZUH_USERNAME', 'admin')
-WAZUH_PASSWORD = os.getenv('WAZUH_PASSWORD', 'admin')
-API_KEY = os.getenv('API_KEY', 'wazuh-bridge-api-key')
-MAX_BUFFER_SIZE = int(os.getenv('MAX_BUFFER_SIZE', '1000'))
 
-# In-memory alert buffer (optimized for limited RAM)
-alert_buffer = []
-buffer_lock = threading.Lock()
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+#### Environment Variables Configuration (Docker Compose)
 
-# Add rotating file handler
-file_handler = RotatingFileHandler('/opt/wazuh-bridge/logs/app.log', maxBytes=10485760, backupCount=5)
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-logger.addHandler(file_handler)
+Provide credentials via a `.env` file and restart n8n:
 
-def verify_api_key(request):
-    """Verify API key from request headers"""
-    provided_key = request.headers.get('X-API-Key')
-    return provided_key == API_KEY
-
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    if not verify_api_key(request):
-        return jsonify({'error': 'Invalid API key'}), 401
-    
-    # Get system metrics
-    memory = psutil.virtual_memory()
-    
-    with buffer_lock:
-        buffered_count = len(alert_buffer)
-    
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.utcnow().isoformat() + 'Z',
-        'buffered_alerts': buffered_count,
-        'uptime': time.time() - start_time,
-        'memory_usage': {
-            'used_mb': round(memory.used / 1024 / 1024, 2),
-            'available_mb': round(memory.available / 1024 / 1024, 2),
-            'percent': memory.percent
-        }
-    })
-
-@app.route('/api/auth', methods=['POST'])
-def authenticate():
-    """Authenticate with Wazuh API"""
-    if not verify_api_key(request):
-        return jsonify({'error': 'Invalid API key'}), 401
-    
-    try:
-        auth_url = f"{WAZUH_API_URL}/security/user/authenticate"
-        auth_data = {
-            'user': WAZUH_USERNAME,
-            'password': WAZUH_PASSWORD
-        }
-        
-        response = requests.post(auth_url, json=auth_data, verify=False, timeout=10)
-        
-        if response.status_code == 200:
-            token = response.json().get('data', {}).get('token')
-            return jsonify({
-                'status': 'authenticated',
-                'token': token,
-                'timestamp': datetime.utcnow().isoformat() + 'Z'
-            })
-        else:
-            logger.error(f"Authentication failed: {response.status_code} - {response.text}")
-            return jsonify({'error': 'Authentication failed'}), 401
-            
-    except Exception as e:
-        logger.error(f"Authentication error: {str(e)}")
-        return jsonify({'error': 'Authentication error'}), 500
-
-@app.route('/api/alerts', methods=['GET'])
-def get_alerts():
-    """Get buffered alerts"""
-    if not verify_api_key(request):
-        return jsonify({'error': 'Invalid API key'}), 401
-    
-    with buffer_lock:
-        alerts = alert_buffer.copy()
-        alert_buffer.clear()  # Clear buffer after reading
-    
-    return jsonify({
-        'alerts': alerts,
-        'count': len(alerts),
-        'timestamp': datetime.utcnow().isoformat() + 'Z'
-    })
-
-@app.route('/api/alerts', methods=['POST'])
-def buffer_alert():
-    """Buffer incoming alerts"""
-    if not verify_api_key(request):
-        return jsonify({'error': 'Invalid API key'}), 401
-    
-    try:
-        alert_data = request.get_json()
-        
-        with buffer_lock:
-            # Add timestamp
-            alert_data['buffered_at'] = datetime.utcnow().isoformat() + 'Z'
-            
-            # Add to buffer
-            alert_buffer.append(alert_data)
-            
-            # Maintain buffer size (FIFO)
-            if len(alert_buffer) > MAX_BUFFER_SIZE:
-                removed = alert_buffer.pop(0)
-                logger.warning(f"Buffer full, removed oldest alert: {removed.get('id', 'unknown')}")
-        
-        return jsonify({
-            'status': 'buffered',
-            'timestamp': datetime.utcnow().isoformat() + 'Z'
-        })
-        
-    except Exception as e:
-        logger.error(f"Error buffering alert: {str(e)}")
-        return jsonify({'error': 'Failed to buffer alert'}), 500
-
-@app.route('/api/metrics', methods=['GET'])
-def get_metrics():
-    """Get system and application metrics"""
-    if not verify_api_key(request):
-        return jsonify({'error': 'Invalid API key'}), 401
-    
-    memory = psutil.virtual_memory()
-    cpu = psutil.cpu_percent(interval=1)
-    
-    with buffer_lock:
-        buffered_count = len(alert_buffer)
-    
-    return jsonify({
-        'system': {
-            'memory': {
-                'used_mb': round(memory.used / 1024 / 1024, 2),
-                'available_mb': round(memory.available / 1024 / 1024, 2),
-                'percent': memory.percent
-            },
-            'cpu_percent': cpu,
-            'uptime': time.time() - start_time
-        },
-        'application': {
-            'buffered_alerts': buffered_count,
-            'max_buffer_size': MAX_BUFFER_SIZE,
-            'buffer_utilization': round((buffered_count / MAX_BUFFER_SIZE) * 100, 2)
-        },
-        'timestamp': datetime.utcnow().isoformat() + 'Z'
-    })
-
-if __name__ == '__main__':
-    start_time = time.time()
-    
-    # Create logs directory
-    os.makedirs('/opt/wazuh-bridge/logs', exist_ok=True)
-    
-    logger.info("Starting Wazuh Bridge Server")
-    logger.info(f"Wazuh API URL: {WAZUH_API_URL}")
-    logger.info(f"Max buffer size: {MAX_BUFFER_SIZE}")
-    
-    app.run(host='0.0.0.0', port=5000, debug=False)
-```
-
-#### Create Environment File
-Create `/opt/wazuh-bridge/.env`:
-```bash
+```env
 WAZUH_API_URL=https://172.20.18.14:55000
-WAZUH_USERNAME=admin
-WAZUH_PASSWORD=admin
-API_KEY=wazuh-bridge-api-key
-MAX_BUFFER_SIZE=1000
+WAZUH_API_USER=<wazuh_username>
+WAZUH_API_PASSWORD=<wazuh_password>
 ```
 
-#### Create Systemd Service
-Create `/etc/systemd/system/wazuh-bridge.service`:
-```ini
-[Unit]
-Description=Wazuh Bridge Server for N8N Integration
-After=network.target
-
-[Service]
-Type=simple
-User=wazuh-bridge
-Group=wazuh-bridge
-WorkingDirectory=/opt/wazuh-bridge
-EnvironmentFile=/opt/wazuh-bridge/.env
-ExecStart=/usr/bin/python3 /opt/wazuh-bridge/app.py
-Restart=always
-RestartSec=10
-
-# Resource limits (optimized for 4GB RAM)
-MemoryLimit=512M
-CPUQuota=50%
-
-# Security
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/opt/wazuh-bridge/logs
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**Environment Variables Configuration:**
-
-Add these environment variables to your N8N deployment:
+Apply changes:
 
 ```bash
-# N8N Environment Configuration
-export WAZUH_API_URL="https://172.20.18.14:55000"
-export WAZUH_USERNAME="admin"
-export WAZUH_PASSWORD="admin"
-export WAZUH_API_TIMEOUT="30000"
-export WAZUH_MAX_RETRIES="3"
-export WAZUH_REQUEST_TIMEOUT="10000"
-
-# Restart N8N to apply changes
-docker-compose restart n8n
+docker-compose up -d --force-recreate n8n
 ```
 
-#### Start Bridge Server
-```bash
-# Create user and directories
-sudo useradd -r -s /bin/false wazuh-bridge
-sudo mkdir -p /opt/wazuh-bridge/logs
-sudo chown -R wazuh-bridge:wazuh-bridge /opt/wazuh-bridge
 
-# Set permissions
-sudo chown -R wazuh-bridge:wazuh-bridge /opt/wazuh-bridge
-
-# Enable and start service
-sudo systemctl daemon-reload
-sudo systemctl enable wazuh-bridge
-sudo systemctl start wazuh-bridge
-
-# Check status
-sudo systemctl status wazuh-bridge
-```
 
 **Workflow Testing:**
 
@@ -449,16 +206,27 @@ python3 test-wazuh-integration.py
      -d '{"rule":{"level":12,"description":"High severity alert"},"agent":{"name":"test-agent"},"timestamp":"2024-01-15T10:30:00Z"}'
    ```
 
-2. **Test bridge server:**
+2. **Test direct Wazuh API connection:**
    ```bash
-   curl -H "X-API-Key: wazuh-bridge-api-key" \
-     http://192.168.30.100:5000/api/health
+   # Test authentication
+   curl -k -X POST "https://172.20.18.14:55000/security/user/authenticate" \
+        -H "Content-Type: application/json" \
+        -d '{"username":"admin","password":"admin"}'
+   
+   # Test alerts endpoint with token
+   curl -k -X GET "https://172.20.18.14:55000/alerts" \
+        -H "Authorization: Bearer YOUR_JWT_TOKEN"
    ```
 
 3. **Check N8N executions:**
    - Go to N8N dashboard
    - Click "Executions" to see workflow runs
    - Verify workflows are triggering correctly
+
+4. **Monitor system resources:**
+   - N8N container performance
+   - Direct Wazuh API response times
+   - Network connectivity to Wazuh server
 
 ### 7. Production Configuration
 
@@ -472,12 +240,11 @@ python3 test-wazuh-integration.py
 #### Performance Optimization
 1. **Configure resource limits** in docker-compose.yml
 2. **Set up log rotation**
-3. **Monitor memory usage** on bridge server
-4. **Configure alert buffering** based on volume
+3. **Tune API timeouts/retries** in workflows based on volume
 
 #### Monitoring Setup
 1. **Enable N8N workflow monitoring**
-2. **Set up bridge server health checks**
+2. **Set up Wazuh API health checks** (base URL, manager and cluster status)
 3. **Configure alerting** for failed workflows
 4. **Monitor Foundation-Sec AI** performance
 
@@ -485,24 +252,29 @@ python3 test-wazuh-integration.py
 
 ### Common Issues
 
-1. **Workflows not triggering:**
-   - Verify workflows are activated
-   - Check webhook URLs are correct
-   - Verify API keys and credentials
+1. **Wazuh API connection failed:**
+   - Verify network connectivity: `ping 172.20.18.14`
+   - Check Wazuh server status and API availability
+   - Test direct API authentication with curl
 
-2. **Bridge server connection errors:**
-   - Check bridge server is running: `systemctl status wazuh-bridge`
-   - Verify network connectivity
-   - Check firewall rules
+2. **Wazuh API authentication failed:**
+   - Verify Wazuh credentials in N8N environment variables
+   - Check Wazuh user permissions and API access
+   - Test authentication endpoint directly
 
-3. **AI analysis failures:**
-   - Verify Foundation-Sec AI is running
-   - Check if AI models are loaded
-   - Review AI service logs
+3. **N8N workflow errors:**
+   - Check N8N execution logs
+   - Verify Wazuh API endpoints and credentials in workflow nodes
+   - Test individual workflow nodes
+   - Check SSL certificate issues (use allowUnauthorizedCerts: true)
+
+4. **Performance issues:**
+   - Monitor N8N container resources
+   - Adjust API timeout values if needed
+   - Check network latency to Wazuh server
 
 ### Log Locations
-- N8N logs: `/home/sa/projects/n8n_sec/n8n-data/n8nEventLog.log`
-- Bridge server logs: `journalctl -u wazuh-bridge -f`
+- N8N logs: `./n8n-data/n8nEventLog.log`
 - Docker logs: `docker-compose logs -f`
 
 ## Support
@@ -515,8 +287,7 @@ For issues and questions:
 
 ## Next Steps
 
-1. **Configure Wazuh** to send alerts to bridge server
-2. **Set up monitoring dashboards**
-3. **Configure notification channels** (Slack, email)
-4. **Implement custom response actions**
-5. **Set up backup and recovery procedures**
+1. **Set up monitoring dashboards**
+2. **Configure notification channels** (Slack, email)
+3. **Implement custom response actions**
+4. **Set up backup and recovery procedures**

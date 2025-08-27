@@ -1,5 +1,5 @@
 {
-  "name": "Wazuh API Health Monitoring",
+  "name": "Wazuh Health Monitoring",
   "nodes": [
     {
       "parameters": {
@@ -30,7 +30,7 @@
     },
     {
       "parameters": {
-        "url": "https://172.20.18.14:55000/",
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/' }}",
         "authentication": "none",
         "requestMethod": "GET",
         "sendHeaders": true,
@@ -59,8 +59,41 @@
     },
     {
       "parameters": {
-        "url": "https://172.20.18.14:55000/manager/status",
-        "authentication": "bearerToken",
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate' }}",
+        "authentication": "none",
+        "requestMethod": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"username\": \"{{ $env.WAZUH_API_USER }}\",\n  \"password\": \"{{ $env.WAZUH_API_PASSWORD }}\"\n}",
+        "options": {
+          "timeout": 20000,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 2,
+            "retryInterval": 1000
+          }
+        }
+      },
+      "id": "get-wazuh-token",
+      "name": "Get Wazuh Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 180]
+    },
+    {
+      "parameters": {
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/manager/status' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "requestMethod": "GET",
         "sendHeaders": true,
         "headerParameters": {
@@ -68,6 +101,10 @@
             {
               "name": "Content-Type",
               "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Get Wazuh Token').first().json.data.token }}"
             }
           ]
         },
@@ -88,8 +125,9 @@
     },
     {
       "parameters": {
-        "url": "https://172.20.18.14:55000/cluster/status",
-        "authentication": "bearerToken",
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/cluster/status' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "requestMethod": "GET",
         "sendHeaders": true,
         "headerParameters": {
@@ -97,6 +135,10 @@
             {
               "name": "Content-Type",
               "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Get Wazuh Token').first().json.data.token }}"
             }
           ]
         },
@@ -243,12 +285,37 @@
             "index": 0
           },
           {
+            "node": "Get Wazuh Token",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Cluster Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Wazuh Token": {
+      "main": [
+        [
+          {
             "node": "Check Wazuh Connectivity",
             "type": "main",
             "index": 0
           },
           {
             "node": "Get Cluster Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Handle Health Error",
             "type": "main",
             "index": 0
           }

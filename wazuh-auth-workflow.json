@@ -1,10 +1,10 @@
 {
-  "name": "Wazuh Direct Authentication",
+  "name": "Wazuh Authentication",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "wazuh/auth",
+        "path": "bridge-auth",
         "responseMode": "onReceived",
         "options": {}
       },
@@ -13,11 +13,11 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [240, 300],
-      "webhookId": "wazuh-auth"
+      "webhookId": "bridge-auth"
     },
     {
       "parameters": {
-        "jsCode": "// Validate authentication request\nconst body = $input.first().json.body;\n\nif (!body || !body.username || !body.password) {\n  return {\n    error: 'Missing username or password',\n    status: 400\n  };\n}\n\n// Prepare authentication data for direct Wazuh API\nreturn {\n  username: body.username,\n  password: body.password,\n  wazuh_url: 'https://172.20.18.14:55000/security/user/authenticate',\n  timestamp: new Date().toISOString()\n};"
+        "jsCode": "// Validate authentication request; fallback to environment variables\nconst req = $input.first().json;\nconst body = req.body || {};\n\nconst username = body.username || $env.WAZUH_API_USER;\nconst password = body.password || $env.WAZUH_API_PASSWORD;\nconst wazuhUrl = ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate';\n\nif (!username || !password) {\n  return { error: 'Missing credentials: set WAZUH_API_USER/PASSWORD', status: 400 }\n}\n\nreturn {\n  username,\n  password,\n  wazuh_url: wazuhUrl,\n  timestamp: new Date().toISOString()\n};"
       },
       "id": "validate-auth-request",
       "name": "Validate Auth Request",
@@ -27,7 +27,7 @@
     },
     {
       "parameters": {
-        "url": "https://172.20.18.14:55000/security/user/authenticate",
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate' }}",
         "authentication": "none",
         "requestMethod": "POST",
         "sendHeaders": true,
@@ -41,7 +41,7 @@
         },
         "sendBody": true,
         "bodyContentType": "json",
-        "jsonBody": "={\n  \"username\": \"{{ $json.username }}\",\n  \"password\": \"{{ $json.password }}\"\n}",
+        "jsonBody": "={\n  \"username\": \"{{ $json.username || $env.WAZUH_API_USER }}\",\n  \"password\": \"{{ $json.password || $env.WAZUH_API_PASSWORD }}\"\n}",
         "options": {
           "timeout": 30000,
           "retry": {
@@ -59,7 +59,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Process authentication response\nconst response = $input.first().json;\nconst authRequest = $('Validate Auth Request').first().json;\n\nif (response.data && response.data.token) {\n  return {\n    success: true,\n    message: 'Successfully authenticated with Wazuh API directly',\n    wazuh_server: '172.20.18.14:55000',\n    authenticated_at: new Date().toISOString(),\n    token: response.data.token\n  };\n} else {\n  return {\n    success: false,\n    error: 'Authentication failed',\n    wazuh_server: '172.20.18.14:55000',\n    attempted_at: new Date().toISOString(),\n    response: response\n  };\n}"
+        "jsCode": "// Process authentication response\nconst response = $input.first().json;\nconst wazuhServer = $env.WAZUH_API_URL || 'https://172.20.18.14:55000';\n\nif (response.data && response.data.token) {\n  return {\n    success: true,\n    message: 'Successfully authenticated with Wazuh API directly',\n    wazuh_server: wazuhServer,\n    authenticated_at: new Date().toISOString(),\n    token: response.data.token\n  };\n} else {\n  return {\n    success: false,\n    error: 'Authentication failed',\n    wazuh_server: wazuhServer,\n    attempted_at: new Date().toISOString(),\n    response: response\n  };\n}"
       },
       "id": "process-auth-response",
       "name": "Process Auth Response",
@@ -80,7 +80,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Handle authentication errors\nconst error = $input.first().json;\n\nreturn {\n  success: false,\n  error: 'Wazuh API authentication failed',\n  details: error.message || 'Unknown error',\n  wazuh_server: '172.20.18.14:55000',\n  timestamp: new Date().toISOString(),\n  retry_recommended: true\n};"
+        "jsCode": "// Handle authentication errors\nconst error = $input.first().json;\nconst wazuhServer = $env.WAZUH_API_URL || 'https://172.20.18.14:55000';\n\nreturn {\n  success: false,\n  error: 'Wazuh API authentication failed',\n  details: error.message || 'Unknown error',\n  wazuh_server: wazuhServer,\n  timestamp: new Date().toISOString(),\n  retry_recommended: true\n};"
       },
       "id": "handle-auth-error",
       "name": "Handle Auth Error",

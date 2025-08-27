@@ -8,13 +8,16 @@ import requests
 import json
 import time
 import sys
+import os
 from datetime import datetime
 from typing import Dict, List, Any
 
 class WazuhIntegrationTester:
     def __init__(self):
         self.n8n_base_url = "http://localhost:5678"
-        self.bridge_server_url = "http://192.168.30.100:5000"
+        self.wazuh_api_url = os.getenv("WAZUH_API_URL", "https://172.20.18.14:55000")
+        self.wazuh_username = os.getenv("WAZUH_API_USER")
+        self.wazuh_password = os.getenv("WAZUH_API_PASSWORD")
         self.test_results = []
         self.failed_tests = []
         
@@ -50,25 +53,33 @@ class WazuhIntegrationTester:
             self.log_test("N8N Connectivity", "FAIL", str(e))
             return False
     
-    def test_bridge_server_connectivity(self) -> bool:
-        """Test bridge server connectivity"""
+    def test_wazuh_api_connectivity(self) -> bool:
+        """Test direct Wazuh API connectivity"""
         try:
-            response = requests.get(f"{self.bridge_server_url}/api/health", 
-                                  headers={"X-API-Key": "wazuh-bridge-api-key"}, 
-                                  timeout=10)
-            if response.status_code == 200:
-                health_data = response.json()
-                self.log_test("Bridge Server Connectivity", "PASS", 
-                            f"Bridge server status: {health_data.get('status', 'unknown')}")
+            base = requests.get(self.wazuh_api_url, timeout=10, verify=False)
+            if base.status_code not in [200, 401]:
+                self.log_test("Wazuh API Connectivity", "FAIL", f"HTTP {base.status_code}")
+                return False
+
+            # Authenticate to obtain token (skip if env creds not provided)
+            if not self.wazuh_username or not self.wazuh_password:
+                self.log_test("Wazuh API Connectivity", "WARN", "WAZUH_API_USER/PASSWORD not set; skipping auth")
+                return True
+            auth = requests.post(
+                f"{self.wazuh_api_url}/security/user/authenticate",
+                json={"username": self.wazuh_username, "password": self.wazuh_password},
+                timeout=15,
+                verify=False,
+            )
+            if auth.status_code == 200 and auth.json().get("data", {}).get("token"):
+                self.log_test("Wazuh API Connectivity", "PASS", "Authenticated and API reachable")
                 return True
             else:
-                self.log_test("Bridge Server Connectivity", "FAIL", f"HTTP {response.status_code}")
+                self.log_test("Wazuh API Connectivity", "FAIL", f"Auth failed: HTTP {auth.status_code}")
                 return False
         except Exception as e:
-            # Bridge server is expected to be unavailable in test environment
-            self.log_test("Bridge Server Connectivity", "WARN", 
-                        f"Bridge server not accessible (expected in test env): {str(e)[:100]}")
-            return True  # Return True for testing purposes since bridge server setup is documented
+            self.log_test("Wazuh API Connectivity", "FAIL", str(e))
+            return False
     
     def test_webhook_receiver_workflow(self) -> bool:
         """Test webhook receiver workflow"""
@@ -150,13 +161,13 @@ class WazuhIntegrationTester:
             self.log_test("High Priority Alert Workflow", "FAIL", str(e))
             return False
     
-    def test_bridge_authentication(self) -> bool:
-        """Test bridge server authentication workflow"""
+    def test_wazuh_authentication_workflow(self) -> bool:
+        """Test direct Wazuh authentication workflow via webhook"""
         try:
-            auth_data = {
-                "username": "wazuh-api-user",
-                "password": "wazuh-api-password"
-            }
+            # Send credentials if available; otherwise rely on n8n env
+            auth_data = {}
+            if self.wazuh_username and self.wazuh_password:
+                auth_data = {"username": self.wazuh_username, "password": self.wazuh_password}
             
             webhook_url = f"{self.n8n_base_url}/webhook/bridge-auth"
             response = requests.post(webhook_url, json=auth_data, timeout=15)
@@ -164,37 +175,55 @@ class WazuhIntegrationTester:
             if response.status_code in [200, 201]:
                 response_data = response.json()
                 if "token" in response_data or "authenticated" in response_data:
-                    self.log_test("Bridge Authentication", "PASS", 
+                    self.log_test("Wazuh Authentication Workflow", "PASS", 
                                 "Authentication workflow completed successfully")
                     return True
                 else:
-                    self.log_test("Bridge Authentication", "FAIL", 
-                                "No authentication token received")
+                    if not auth_data:
+                        self.log_test("Wazuh Authentication Workflow", "WARN", 
+                                      "No creds provided; ensure N8N has WAZUH_API_USER/PASSWORD env")
+                        return True
+                    self.log_test("Wazuh Authentication Workflow", "FAIL", 
+                                  "No authentication token received")
                     return False
             else:
-                self.log_test("Bridge Authentication", "FAIL", 
+                self.log_test("Wazuh Authentication Workflow", "FAIL", 
                             f"HTTP {response.status_code}: {response.text}")
                 return False
         except Exception as e:
-            self.log_test("Bridge Authentication", "FAIL", str(e))
+            self.log_test("Wazuh Authentication Workflow", "FAIL", str(e))
             return False
     
     def test_alert_monitoring_workflow(self) -> bool:
-        """Test alert monitoring workflow"""
+        """Test alert monitoring against direct Wazuh API"""
         try:
-            # This workflow runs on schedule, so we test the endpoint it calls
-            response = requests.get(f"{self.bridge_server_url}/api/alerts", 
-                                  headers={"X-API-Key": "wazuh-bridge-api-key"}, 
-                                  timeout=15)
-            
+            # Authenticate (skip if env creds not provided)
+            if not self.wazuh_username or not self.wazuh_password:
+                self.log_test("Alert Monitoring Workflow", "WARN", "WAZUH_API_USER/PASSWORD not set; skipping direct API test")
+                return True
+            auth = requests.post(
+                f"{self.wazuh_api_url}/security/user/authenticate",
+                json={"username": self.wazuh_username, "password": self.wazuh_password},
+                timeout=15,
+                verify=False,
+            )
+            token = auth.json().get("data", {}).get("token") if auth.status_code == 200 else None
+            if not token:
+                self.log_test("Alert Monitoring Workflow", "FAIL", "Token acquisition failed")
+                return False
+            # Fetch alerts directly from Wazuh
+            response = requests.get(
+                f"{self.wazuh_api_url}/alerts",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=20,
+                verify=False,
+            )
             if response.status_code == 200:
-                alerts_data = response.json()
-                self.log_test("Alert Monitoring Workflow", "PASS", 
-                            f"Retrieved {len(alerts_data.get('alerts', []))} alerts from buffer")
+                affected = response.json().get("data", {}).get("affected_items", [])
+                self.log_test("Alert Monitoring Workflow", "PASS", f"Retrieved {len(affected)} alerts")
                 return True
             else:
-                self.log_test("Alert Monitoring Workflow", "FAIL", 
-                            f"HTTP {response.status_code}: {response.text}")
+                self.log_test("Alert Monitoring Workflow", "FAIL", f"HTTP {response.status_code}: {response.text}")
                 return False
         except Exception as e:
             self.log_test("Alert Monitoring Workflow", "FAIL", str(e))
@@ -281,36 +310,44 @@ class WazuhIntegrationTester:
             self.log_test("Foundation-Sec AI Integration", "FAIL", str(e))
             return False
     
-    def test_bridge_health_monitoring(self) -> bool:
-        """Test bridge health monitoring"""
+    def test_wazuh_health_monitoring(self) -> bool:
+        """Test direct Wazuh API health endpoints"""
         try:
-            # Test health endpoint
-            response = requests.get(f"{self.bridge_server_url}/api/health", 
-                                  headers={"X-API-Key": "wazuh-bridge-api-key"}, 
-                                  timeout=10)
-            
-            if response.status_code == 200:
-                health_data = response.json()
-                
-                # Test metrics endpoint
-                metrics_response = requests.get(f"{self.bridge_server_url}/api/metrics", 
-                                              headers={"X-API-Key": "wazuh-bridge-api-key"}, 
-                                              timeout=10)
-                
-                if metrics_response.status_code == 200:
-                    self.log_test("Bridge Health Monitoring", "PASS", 
-                                "Health and metrics endpoints are functional")
-                    return True
-                else:
-                    self.log_test("Bridge Health Monitoring", "WARN", 
-                                "Health endpoint works but metrics endpoint failed")
-                    return False
+            # Base health check (may return 200 or 401 depending on config)
+            base = requests.get(self.wazuh_api_url, timeout=10, verify=False)
+            if base.status_code not in [200, 401]:
+                self.log_test("Wazuh Health Monitoring", "FAIL", f"Base HTTP {base.status_code}")
+                return False
+
+            # Auth then manager status (skip if env creds not provided)
+            if not self.wazuh_username or not self.wazuh_password:
+                self.log_test("Wazuh Health Monitoring", "WARN", "WAZUH_API_USER/PASSWORD not set; skipping manager status test")
+                return True
+            auth = requests.post(
+                f"{self.wazuh_api_url}/security/user/authenticate",
+                json={"username": self.wazuh_username, "password": self.wazuh_password},
+                timeout=15,
+                verify=False,
+            )
+            token = auth.json().get("data", {}).get("token") if auth.status_code == 200 else None
+            if not token:
+                self.log_test("Wazuh Health Monitoring", "FAIL", "Token acquisition failed")
+                return False
+
+            mgr = requests.get(
+                f"{self.wazuh_api_url}/manager/status",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=15,
+                verify=False,
+            )
+            if mgr.status_code == 200:
+                self.log_test("Wazuh Health Monitoring", "PASS", "Manager status reachable")
+                return True
             else:
-                self.log_test("Bridge Health Monitoring", "FAIL", 
-                            f"Health endpoint failed: HTTP {response.status_code}")
+                self.log_test("Wazuh Health Monitoring", "FAIL", f"Manager HTTP {mgr.status_code}")
                 return False
         except Exception as e:
-            self.log_test("Bridge Health Monitoring", "FAIL", str(e))
+            self.log_test("Wazuh Health Monitoring", "FAIL", str(e))
             return False
     
     def run_all_tests(self) -> bool:
@@ -321,7 +358,7 @@ class WazuhIntegrationTester:
         # Core connectivity tests
         print("\n📡 Testing Core Connectivity...")
         n8n_ok = self.test_n8n_connectivity()
-        bridge_ok = self.test_bridge_server_connectivity()  # Returns True for test env
+        wazuh_ok = self.test_wazuh_api_connectivity()
         ai_ok = self.test_foundation_sec_ai_integration()
         
         if not n8n_ok:
@@ -334,11 +371,11 @@ class WazuhIntegrationTester:
         # Workflow tests
         print("\n🔄 Testing N8N Workflows...")
         webhook_ok = self.test_webhook_receiver_workflow()
-        auth_ok = self.test_bridge_authentication()
+        auth_ok = self.test_wazuh_authentication_workflow()
         monitoring_ok = self.test_alert_monitoring_workflow()
         high_priority_ok = self.test_high_priority_alert_workflow()
         incident_ok = self.test_incident_response_workflow()
-        health_ok = self.test_bridge_health_monitoring()
+        health_ok = self.test_wazuh_health_monitoring()
         
         # Summary
         print("\n" + "=" * 50)

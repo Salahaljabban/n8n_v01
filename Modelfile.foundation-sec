@@ -12,6 +12,9 @@ SYSTEM """You are Foundation-Sec-8B, a cybersecurity-specialized AI assistant. Y
 
 PARAMETER temperature 0.7
 PARAMETER top_p 0.9
-PARAMETER top_k 40
+PARAMETER top_k 20
 PARAMETER repeat_penalty 1.1
-PARAMETER num_ctx 4096
+PARAMETER num_ctx 2048
+PARAMETER num_predict 256
+PARAMETER mirostat 1
+PARAMETER mirostat_tau 2.0

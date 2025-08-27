@@ -6,6 +6,7 @@ This avoids loading the heavy model directly and prevents VM freezing
 
 import asyncio
 import logging
+import os
 import requests
 import json
 from contextlib import asynccontextmanager
@@ -38,7 +39,7 @@ class ChatResponse(BaseModel):
     usage: Dict[str, int]
 
 # Global variables
-ollama_url = "http://localhost:11434"
+ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
 model_name = "foundation-sec"
 
 @asynccontextmanager
@@ -115,14 +116,23 @@ async def chat_completions(request: ChatRequest):
         
         prompt += "Assistant: "
         
-        # Prepare Ollama request
+        # Use memory-efficient model selection
+        # Default to tinyllama for memory constraints, fallback to Foundation-Sec-8B if requested
+        model_name = "tinyllama:latest"  # Memory-efficient default
+        if hasattr(request, 'model') and request.model and 'foundation-sec' in request.model.lower():
+            model_name = "bogdancsn/foundation-sec-8b:latest"
+        
+        # Prepare Ollama request with memory-optimized settings
         ollama_request = {
-            "model": "bogdancsn/foundation-sec-8b:latest",
+            "model": model_name,
             "prompt": prompt,
             "stream": False,
             "options": {
-                "temperature": request.temperature,
-                "num_predict": request.max_tokens
+                "temperature": request.temperature if request.temperature else 0.7,
+                "num_predict": min(request.max_tokens if request.max_tokens else 256, 256),  # Limit tokens for memory efficiency
+                "num_ctx": 2048,  # Reduced context window
+                "top_k": 20,      # Reduced top_k for efficiency
+                "top_p": 0.9
             }
         }
         

@@ -1,5 +1,5 @@
 {
-  "name": "Automated Incident Response",
+  "name": "Wazuh Incident Response",
   "nodes": [
     {
       "parameters": {

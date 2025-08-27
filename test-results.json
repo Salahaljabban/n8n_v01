@@ -1,66 +1,66 @@
 {
-  "timestamp": "2025-08-23T00:36:03.875724",
+  "timestamp": "2025-08-28T00:58:02.558664",
   "summary": {
-    "passed": 1,
-    "failed": 6,
-    "warnings": 2,
+    "passed": 4,
+    "failed": 0,
+    "warnings": 5,
     "total": 9,
-    "success_rate": 11.11111111111111
+    "success_rate": 44.44444444444444
   },
   "detailed_results": [
     {
       "test_name": "N8N Connectivity",
       "status": "PASS",
-      "timestamp": "2025-08-23T00:35:28.690495",
+      "timestamp": "2025-08-28T00:57:56.640882",
       "details": "N8N server is accessible"
     },
     {
-      "test_name": "Bridge Server Connectivity",
+      "test_name": "Wazuh API Connectivity",
       "status": "WARN",
-      "timestamp": "2025-08-23T00:35:38.697772",
-      "details": "Bridge server not accessible (expected in test env): HTTPConnectionPool(host='192.168.30.100', port=5000): Max retries exceeded with url: /api/health (Ca"
+      "timestamp": "2025-08-28T00:57:56.809074",
+      "details": "WAZUH_API_USER/PASSWORD not set; skipping auth"
     },
     {
       "test_name": "Foundation-Sec AI Integration",
       "status": "WARN",
-      "timestamp": "2025-08-23T00:35:38.703729",
-      "details": "AI service accessible but no models available (setup required)"
+      "timestamp": "2025-08-28T00:57:58.776387",
+      "details": "AI service accessible but model test failed: HTTP 500"
     },
     {
       "test_name": "Webhook Receiver Workflow",
-      "status": "FAIL",
-      "timestamp": "2025-08-23T00:35:38.805333",
-      "details": "HTTP 404: {\"code\":404,\"message\":\"The requested webhook \\\"POST wazuh-alerts\\\" is not registered.\",\"hint\":\"The workflow must be active for a production URL to run successfully. You can activate the workflow using the toggle in the top-right of the editor. Note that unlike test URL calls, production URL calls aren't shown on the canvas (only in the executions list)\"}"
+      "status": "PASS",
+      "timestamp": "2025-08-28T00:57:58.806987",
+      "details": "Test alert processed successfully"
     },
     {
-      "test_name": "Bridge Authentication",
-      "status": "FAIL",
-      "timestamp": "2025-08-23T00:35:38.817504",
-      "details": "HTTP 404: {\"code\":404,\"message\":\"The requested webhook \\\"POST bridge-auth\\\" is not registered.\",\"hint\":\"The workflow must be active for a production URL to run successfully. You can activate the workflow using the toggle in the top-right of the editor. Note that unlike test URL calls, production URL calls aren't shown on the canvas (only in the executions list)\"}"
+      "test_name": "Wazuh Authentication Workflow",
+      "status": "WARN",
+      "timestamp": "2025-08-28T00:57:59.273839",
+      "details": "No creds provided; ensure N8N has WAZUH_API_USER/PASSWORD env"
     },
     {
       "test_name": "Alert Monitoring Workflow",
-      "status": "FAIL",
-      "timestamp": "2025-08-23T00:35:53.835620",
-      "details": "HTTPConnectionPool(host='192.168.30.100', port=5000): Max retries exceeded with url: /api/alerts (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x7670c459f2f0>, 'Connection to 192.168.30.100 timed out. (connect timeout=15)'))"
+      "status": "WARN",
+      "timestamp": "2025-08-28T00:57:59.274077",
+      "details": "WAZUH_API_USER/PASSWORD not set; skipping direct API test"
     },
     {
       "test_name": "High Priority Alert Workflow",
-      "status": "FAIL",
-      "timestamp": "2025-08-23T00:35:53.849703",
-      "details": "HTTP 404: {\"code\":404,\"message\":\"The requested webhook \\\"POST high-priority-alert\\\" is not registered.\",\"hint\":\"The workflow must be active for a production URL to run successfully. You can activate the workflow using the toggle in the top-right of the editor. Note that unlike test URL calls, production URL calls aren't shown on the canvas (only in the executions list)\"}"
+      "status": "PASS",
+      "timestamp": "2025-08-28T00:58:01.279464",
+      "details": "High priority alert processed with AI analysis"
     },
     {
       "test_name": "Incident Response Workflow",
-      "status": "FAIL",
-      "timestamp": "2025-08-23T00:35:53.862153",
-      "details": "HTTP 404: {\"code\":404,\"message\":\"The requested webhook \\\"POST incident-response\\\" is not registered.\",\"hint\":\"The workflow must be active for a production URL to run successfully. You can activate the workflow using the toggle in the top-right of the editor. Note that unlike test URL calls, production URL calls aren't shown on the canvas (only in the executions list)\"}"
+      "status": "PASS",
+      "timestamp": "2025-08-28T00:58:02.414096",
+      "details": "Incident response workflow executed successfully"
     },
     {
-      "test_name": "Bridge Health Monitoring",
-      "status": "FAIL",
-      "timestamp": "2025-08-23T00:36:03.875121",
-      "details": "HTTPConnectionPool(host='192.168.30.100', port=5000): Max retries exceeded with url: /api/health (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x7670c45d00e0>, 'Connection to 192.168.30.100 timed out. (connect timeout=10)'))"
+      "test_name": "Wazuh Health Monitoring",
+      "status": "WARN",
+      "timestamp": "2025-08-28T00:58:02.556071",
+      "details": "WAZUH_API_USER/PASSWORD not set; skipping manager status test"
     }
   ]
 }

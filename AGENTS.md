@@ -30,7 +30,7 @@
 - Save artifacts to `test-results.json` (existing pattern).
 
 ## Commit & Pull Request Guidelines
-- Commit style: Conventional Commits (e.g., `feat: add bridge health monitoring workflow`, `fix: harden AI health check`).
+- Commit style: Conventional Commits (e.g., `feat: add Wazuh API health monitoring workflow`, `fix: harden AI health check`).
 - PRs must include: purpose and scope, linked issues, test evidence (commands and results), screenshots of N8N changes, and notes for config/doc updates.
 - If modifying `docker-compose.yml`, workflows, or env usage, update `README.md` and deployment docs accordingly.
 
@@ -38,4 +38,3 @@
 - Never commit secrets; use `.env` values referenced in `README.md` and deployment guides.
 - Validate external calls and timeouts; configure appropriate timeouts for direct Wazuh API calls.
 - Log paths: `./n8n-data/logs/`, Docker logs via `docker logs <container>`. Redact sensitive data in examples.
-

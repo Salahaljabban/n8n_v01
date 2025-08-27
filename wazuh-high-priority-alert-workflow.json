@@ -1,5 +1,5 @@
 {
-  "name": "High Priority Security Alert Processing",
+  "name": "Wazuh High Priority Alert",
   "nodes": [
     {
       "parameters": {

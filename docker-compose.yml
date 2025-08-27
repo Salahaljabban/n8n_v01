@@ -5,13 +5,20 @@ services:
     restart: always
     ports:
       - "5678:5678"
+    env_file:
+      - .env
     environment:
-      - N8N_HOST=localhost
+      - N8N_HOST=192.168.208.49
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
       - NODE_ENV=production
-      - WEBHOOK_URL=http://localhost:5678/
+      - WEBHOOK_URL=http://192.168.208.49:5678/
       - GENERIC_TIMEZONE=UTC
+      - WAZUH_API_URL=${WAZUH_API_URL}
+      - WAZUH_API_USER=${WAZUH_API_USER}
+      - WAZUH_API_PASSWORD=${WAZUH_API_PASSWORD}
+      - N8N_PUBLIC_API_DISABLED=false
+      - N8N_PUBLIC_API_SWAGGERUI_DISABLED=false
     volumes:
       - ./n8n-data:/home/node/.n8n
     networks:
@@ -21,22 +28,22 @@ services:
       - foundation-sec
 
   foundation-sec:
-    build:
-      context: .
-      dockerfile: foundation-sec-dockerfile
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./foundation_sec_api_lite.py:/app/foundation_sec_api_lite.py
+      - ./requirements-foundation.txt:/app/requirements-foundation.txt
+    command: bash -c "pip install -r requirements-foundation.txt && python foundation_sec_api_lite.py"
     container_name: foundation-sec-8b
     restart: always
     ports:
       - "8000:8000"
     environment:
-      - TRANSFORMERS_CACHE=/app/cache
-      - HF_HOME=/app/cache
-    volumes:
-      - foundation_sec_cache:/app/cache
+      - OLLAMA_URL=http://foundation-sec-ai:11434
     networks:
       - n8n-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 5
