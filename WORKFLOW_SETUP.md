@@ -26,12 +26,12 @@ Import these 7 workflow files in this order:
    - JSON syntax fixed (backtick escaping)
 
 #### Authentication and Health Monitoring
-3. **wazuh-auth-workflow.json** - API Authentication
+3. **wazuh-bridge-auth-workflow.json** - API Authentication
    - Webhook: `/webhook/bridge-auth` ✅ CORRECTED (was `/webhook/wazuh/auth`)
    - Manages Wazuh API tokens
    - Handles authentication refreshing
 
-4. **wazuh-health-monitoring-workflow.json** - System Health
+4. **wazuh-bridge-health-monitoring-workflow.json** - System Health
    - Runs every 5 minutes
    - Monitors system connectivity
    - Tracks API response times

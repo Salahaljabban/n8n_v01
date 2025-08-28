@@ -25,7 +25,8 @@
         "genericAuthType": "httpHeaderAuth",
         "requestMethod": "GET",
         "options": {
-          "timeout": 10000
+          "timeout": 10000,
+          "allowUnauthorizedCerts": true
         }
       },
       "id": "api-health-check",
@@ -36,7 +37,7 @@
     },
     {
       "parameters": {
-        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate' }}",
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate?raw=true' }}",
         "authentication": "none",
         "requestMethod": "POST",
         "sendHeaders": true,
@@ -48,16 +49,15 @@
             }
           ]
         },
-        "sendBody": true,
-        "bodyContentType": "json",
-        "jsonBody": "={\n  \"username\": \"{{ $env.WAZUH_API_USER }}\",\n  \"password\": \"{{ $env.WAZUH_API_PASSWORD }}\"\n}",
+        "sendBody": false,
         "options": {
           "timeout": 20000,
           "retry": {
             "enabled": true,
             "maxRetries": 2,
             "retryInterval": 1000
-          }
+          },
+          "allowUnauthorizedCerts": true
         }
       },
       "id": "get-wazuh-token",
@@ -91,7 +91,7 @@
             },
             {
               "name": "Authorization",
-              "value": "={{ 'Bearer ' + $('Get Wazuh Token').first().json.data.token }}"
+              "value": "={{ 'Bearer ' + $('Get Wazuh Token').first().json }}"
             }
           ]
         },
@@ -101,7 +101,8 @@
             "enabled": true,
             "maxRetries": 2,
             "retryInterval": 5000
-          }
+          },
+          "allowUnauthorizedCerts": true
         }
       },
       "id": "fetch-buffered-alerts",

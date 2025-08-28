@@ -27,8 +27,9 @@
     },
     {
       "parameters": {
-        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate' }}",
-        "authentication": "none",
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate?raw=true' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
         "requestMethod": "POST",
         "sendHeaders": true,
         "headerParameters": {
@@ -39,16 +40,15 @@
             }
           ]
         },
-        "sendBody": true,
-        "bodyContentType": "json",
-        "jsonBody": "={\n  \"username\": \"{{ $json.username || $env.WAZUH_API_USER }}\",\n  \"password\": \"{{ $json.password || $env.WAZUH_API_PASSWORD }}\"\n}",
+        "sendBody": false,
         "options": {
           "timeout": 30000,
           "retry": {
             "enabled": true,
             "maxRetries": 3,
             "retryInterval": 1000
-          }
+          },
+          "allowUnauthorizedCerts": true
         }
       },
       "id": "wazuh-auth-request",
@@ -59,7 +59,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Process authentication response\nconst response = $input.first().json;\nconst wazuhServer = $env.WAZUH_API_URL || 'https://172.20.18.14:55000';\n\nif (response.data && response.data.token) {\n  return {\n    success: true,\n    message: 'Successfully authenticated with Wazuh API directly',\n    wazuh_server: wazuhServer,\n    authenticated_at: new Date().toISOString(),\n    token: response.data.token\n  };\n} else {\n  return {\n    success: false,\n    error: 'Authentication failed',\n    wazuh_server: wazuhServer,\n    attempted_at: new Date().toISOString(),\n    response: response\n  };\n}"
+        "jsCode": "// Process authentication response\nconst input = $input.first();\nconst wazuhServer = $env.WAZUH_API_URL || 'https://172.20.18.14:55000';\n\n// The response should be a raw JWT token string\nlet token = '';\nif (input.json && typeof input.json === 'string') {\n  token = input.json.trim();\n} else if (input.binary && input.binary.data) {\n  token = input.binary.data.toString().trim();\n} else {\n  token = String(input.json || '').trim();\n}\n\nif (token && token.length > 50) {\n  return {\n    success: true,\n    message: 'Successfully authenticated with Wazuh API using raw token',\n    wazuh_server: wazuhServer,\n    authenticated_at: new Date().toISOString(),\n    token: token\n  };\n} else {\n  return {\n    success: false,\n    error: 'Authentication failed - no valid token received',\n    wazuh_server: wazuhServer,\n    attempted_at: new Date().toISOString(),\n    response: input\n  };\n}"
       },
       "id": "process-auth-response",
       "name": "Process Auth Response",

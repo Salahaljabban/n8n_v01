@@ -1,66 +1,72 @@
 {
-  "timestamp": "2025-08-28T00:58:02.558664",
+  "timestamp": "2025-08-28T15:46:27.990055",
   "summary": {
-    "passed": 4,
-    "failed": 0,
-    "warnings": 5,
-    "total": 9,
-    "success_rate": 44.44444444444444
+    "passed": 5,
+    "failed": 4,
+    "warnings": 1,
+    "total": 10,
+    "success_rate": 50.0
   },
   "detailed_results": [
     {
       "test_name": "N8N Connectivity",
       "status": "PASS",
-      "timestamp": "2025-08-28T00:57:56.640882",
+      "timestamp": "2025-08-28T15:46:21.426474",
       "details": "N8N server is accessible"
     },
     {
       "test_name": "Wazuh API Connectivity",
-      "status": "WARN",
-      "timestamp": "2025-08-28T00:57:56.809074",
-      "details": "WAZUH_API_USER/PASSWORD not set; skipping auth"
+      "status": "FAIL",
+      "timestamp": "2025-08-28T15:46:21.723990",
+      "details": "Auth failed: HTTP 401"
     },
     {
       "test_name": "Foundation-Sec AI Integration",
       "status": "WARN",
-      "timestamp": "2025-08-28T00:57:58.776387",
+      "timestamp": "2025-08-28T15:46:23.677378",
       "details": "AI service accessible but model test failed: HTTP 500"
     },
     {
       "test_name": "Webhook Receiver Workflow",
       "status": "PASS",
-      "timestamp": "2025-08-28T00:57:58.806987",
+      "timestamp": "2025-08-28T15:46:23.700982",
       "details": "Test alert processed successfully"
     },
     {
       "test_name": "Wazuh Authentication Workflow",
-      "status": "WARN",
-      "timestamp": "2025-08-28T00:57:59.273839",
-      "details": "No creds provided; ensure N8N has WAZUH_API_USER/PASSWORD env"
+      "status": "FAIL",
+      "timestamp": "2025-08-28T15:46:24.185139",
+      "details": "No authentication token received"
     },
     {
       "test_name": "Alert Monitoring Workflow",
-      "status": "WARN",
-      "timestamp": "2025-08-28T00:57:59.274077",
-      "details": "WAZUH_API_USER/PASSWORD not set; skipping direct API test"
+      "status": "FAIL",
+      "timestamp": "2025-08-28T15:46:24.495847",
+      "details": "Token acquisition failed"
     },
     {
       "test_name": "High Priority Alert Workflow",
       "status": "PASS",
-      "timestamp": "2025-08-28T00:58:01.279464",
-      "details": "High priority alert processed with AI analysis"
+      "timestamp": "2025-08-28T15:46:25.471502",
+      "details": "High priority alert processed successfully"
     },
     {
       "test_name": "Incident Response Workflow",
       "status": "PASS",
-      "timestamp": "2025-08-28T00:58:02.414096",
+      "timestamp": "2025-08-28T15:46:26.159185",
       "details": "Incident response workflow executed successfully"
     },
     {
-      "test_name": "Wazuh Health Monitoring",
-      "status": "WARN",
-      "timestamp": "2025-08-28T00:58:02.556071",
-      "details": "WAZUH_API_USER/PASSWORD not set; skipping manager status test"
+      "test_name": "AI Chat Workflow",
+      "status": "PASS",
+      "timestamp": "2025-08-28T15:46:27.435322",
+      "details": "AI chat workflow processed security analysis request"
+    },
+    {
+      "test_name": "Wazuh Health Monitoring Workflow",
+      "status": "FAIL",
+      "timestamp": "2025-08-28T15:46:27.977300",
+      "details": "Token acquisition failed"
     }
   ]
 }

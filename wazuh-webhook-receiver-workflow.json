@@ -1,10 +1,10 @@
 {
-  "name": "Wazuh Webhook Receiver",
+  "name": "Real-time Wazuh Webhook Receiver",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "wazuh-alerts",
+        "path": "wazuh-webhook",
         "responseMode": "onReceived",
         "options": {
           "noResponseBody": false
@@ -15,7 +15,7 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [240, 300],
-      "webhookId": "wazuh-alerts"
+      "webhookId": "wazuh-webhook"
     },
     {
       "parameters": {
@@ -170,7 +170,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Create Slack notification for medium/high alerts\nconst alert = $('Normalize Alert').first().json;\n\nconst severityEmoji = {\n  critical: '🚨',\n  high: '⚠️',\n  medium: '🔶',\n  low: 'ℹ️'\n};\n\nconst severityColor = {\n  critical: '#FF0000',\n  high: '#FFA500',\n  medium: '#FFFF00',\n  low: '#00FF00'\n};\n\nconst slackMessage = {\n  channel: '#security-monitoring',\n  username: 'Wazuh Alert Bot',\n  icon_emoji: ':shield:',\n  attachments: [\n    {\n      color: severityColor[alert.severity],\n      title: `${severityEmoji[alert.severity]} Wazuh Security Alert - ${alert.severity.toUpperCase()}`,\n      fields: [\n        {\n          title: 'Alert ID',\n          value: alert.alert_id,\n          short: true\n        },\n        {\n          title: 'Rule Level',\n          value: alert.rule_level.toString(),\n          short: true\n        },\n        {\n          title: 'Agent',\n          value: `${alert.agent_name} (${alert.agent_ip})`,\n          short: true\n        },\n        {\n          title: 'Location',\n          value: alert.location,\n          short: true\n        },\n        {\n          title: 'Rule Description',\n          value: alert.rule_description,\n          short: false\n        }\n      ],\n      footer: 'Wazuh SIEM',\n      ts: Math.floor(new Date(alert.timestamp).getTime() / 1000)\n    }\n  ]\n};\n\nif (alert.full_log && alert.full_log.length > 0) {\n  slackMessage.attachments[0].fields.push({\n    title: 'Log Sample',\n    value: '```' + alert.full_log.substring(0, 200) + '...```',\n    short: false\n  });\n}\n\nreturn {\n  slack_message: slackMessage,\n  notification_sent: true,\n  alert_id: alert.alert_id\n};"
+        "jsCode": "// Create Slack notification for medium/high alerts\nconst alert = $('Normalize Alert').first().json;\n\nconst severityEmoji = {\n  critical: '🚨',\n  high: '⚠️',\n  medium: '🔶',\n  low: 'ℹ️'\n};\n\nconst severityColor = {\n  critical: '#FF0000',\n  high: '#FFA500',\n  medium: '#FFFF00',\n  low: '#00FF00'\n};\n\nconst slackMessage = {\n  channel: '#security-monitoring',\n  username: 'Wazuh Alert Bot',\n  icon_emoji: ':shield:',\n  attachments: [\n    {\n      color: severityColor[alert.severity],\n      title: `${severityEmoji[alert.severity]} Wazuh Security Alert - ${alert.severity.toUpperCase()}`,\n      fields: [\n        {\n          title: 'Alert ID',\n          value: alert.alert_id,\n          short: true\n        },\n        {\n          title: 'Rule Level',\n          value: alert.rule_level.toString(),\n          short: true\n        },\n        {\n          title: 'Agent',\n          value: `${alert.agent_name} (${alert.agent_ip})`,\n          short: true\n        },\n        {\n          title: 'Location',\n          value: alert.location,\n          short: true\n        },\n        {\n          title: 'Rule Description',\n          value: alert.rule_description,\n          short: false\n        }\n      ],\n      footer: 'Wazuh SIEM',\n      ts: Math.floor(new Date(alert.timestamp).getTime() / 1000)\n    }\n  ]\n};\n\nif (alert.full_log && alert.full_log.length > 0) {\n  slackMessage.attachments[0].fields.push({\n    title: 'Log Sample',\n    value: `\\`\\`\\`${alert.full_log.substring(0, 200)}...\\`\\`\\``,\n    short: false\n  });\n}\n\nreturn {\n  slack_message: slackMessage,\n  notification_sent: true,\n  alert_id: alert.alert_id\n};"
       },
       "id": "create-slack-alert",
       "name": "Create Slack Alert",

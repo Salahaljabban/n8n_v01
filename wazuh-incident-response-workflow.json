@@ -82,7 +82,8 @@
             "enabled": true,
             "maxRetries": 2,
             "retryInterval": 5000
-          }
+          },
+          "allowUnauthorizedCerts": true
         }
       },
       "id": "block-ip-address",
@@ -143,7 +144,8 @@
         "bodyContentType": "json",
         "jsonBody": "={\n  \"command\": \"host-deny\",\n  \"arguments\": [\"{{ $json.agent_name }}\"],\n  \"alert\": {\n    \"rule\": {\n      \"id\": \"{{ $json.rule_id }}\"\n    },\n    \"agent\": {\n      \"id\": \"{{ $json.agent_id }}\"\n    }\n  }\n}",
         "options": {
-          "timeout": 15000
+          "timeout": 15000,
+          "allowUnauthorizedCerts": true
         }
       },
       "id": "quarantine-host",

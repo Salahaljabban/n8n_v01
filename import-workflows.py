@@ -17,7 +17,7 @@ class N8NWorkflowManager:
         self.n8n_url = n8n_url
         self.session = requests.Session()
         # Support n8n API key via env or arg
-        self.api_key = api_key or os.getenv("N8N_API_KEY")
+        self.api_key = api_key or os.getenv("N8N_API_TOKEN") or "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2OGRlNzY3MC0wNjdmLTQ3YmEtYWU4Ni05ZjdlMDg0MzliNWMiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzU2MzY0MDQ3LCJleHAiOjE3NTg5MzEyMDB9.la5NgKNNQ_AoGsxiwnWttMnHsm_6YTiRbbNwJt6gU6I"
         if self.api_key:
             # Add both header styles to cover REST and Public API
             self.session.headers.update({
@@ -179,7 +179,7 @@ def main():
     print("N8N Security Workflow Import Tool")
     print("=" * 40)
     
-    manager = N8NWorkflowManager(api_key=os.getenv("N8N_API_KEY"))
+    manager = N8NWorkflowManager(api_key=os.getenv("N8N_API_TOKEN"))
     
     # Check N8N status
     if not manager.check_n8n_status():
