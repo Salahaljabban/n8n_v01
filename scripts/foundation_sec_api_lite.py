@@ -118,9 +118,10 @@ async def chat_completions(request: ChatRequest):
         prompt += "Assistant: "
         
         # Use memory-efficient model selection
-        # Default to tinyllama for memory constraints, fallback to Foundation-Sec-8B if requested
+        # Always default to tinyllama for memory constraints
+        # Only use Foundation-Sec-8B if specifically requested with "foundation-sec-8b-force"
         model_name = "tinyllama:latest"  # Memory-efficient default
-        if hasattr(request, 'model') and request.model and 'foundation-sec' in request.model.lower():
+        if hasattr(request, 'model') and request.model and 'foundation-sec-8b-force' in request.model.lower():
             model_name = "bogdancsn/foundation-sec-8b:latest"
         
         # Prepare Ollama request with memory-optimized settings
@@ -156,7 +157,7 @@ async def chat_completions(request: ChatRequest):
         # Format response in OpenAI format
         return ChatResponse(
             id=f"chatcmpl-{hash(prompt) % 1000000}",
-            created=int(asyncio.get_event_loop().time()),
+            created=int(time.time()),
             model=request.model,
             choices=[
                 {
@@ -180,7 +181,9 @@ async def chat_completions(request: ChatRequest):
         raise HTTPException(status_code=503, detail="Model service unavailable")
     except Exception as e:
         logger.error(f"Error in chat completion: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.get("/models")
 async def list_models():

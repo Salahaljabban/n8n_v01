@@ -80,28 +80,6 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [1120, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Handle authentication errors\nconst error = $input.first().json;\nconst wazuhServer = $env.WAZUH_API_URL || 'https://172.20.18.14:55000';\n\nreturn {\n  success: false,\n  error: 'Wazuh API authentication failed',\n  details: error.message || 'Unknown error',\n  wazuh_server: wazuhServer,\n  timestamp: new Date().toISOString(),\n  retry_recommended: true\n};"
-      },
-      "id": "handle-auth-error",
-      "name": "Handle Auth Error",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [680, 480]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ $json }}",
-        "responseCode": 401
-      },
-      "id": "error-webhook-response",
-      "name": "Error Webhook Response",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [900, 480]
     }
   ],
   "connections": {
@@ -136,15 +114,6 @@
             "index": 0
           }
         ]
-      ],
-      "error": [
-        [
-          {
-            "node": "Handle Auth Error",
-            "type": "main",
-            "index": 0
-          }
-        ]
       ]
     },
     "Process Auth Response": {
@@ -152,17 +121,6 @@
         [
           {
             "node": "Auth Webhook Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Handle Auth Error": {
-      "main": [
-        [
-          {
-            "node": "Error Webhook Response",
             "type": "main",
             "index": 0
           }
@@ -180,7 +138,7 @@
   "meta": {
     "templateCredsSetupCompleted": true
   },
-  "id": "wazuh-direct-auth-workflow",
+  "id": "wazuh-authentication-workflow",
   "tags": [
     {
       "createdAt": "2025-01-21T18:00:00.000Z",
