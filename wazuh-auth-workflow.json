@@ -28,8 +28,7 @@
     {
       "parameters": {
         "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate?raw=true' }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpBasicAuth",
+        "authentication": "none",
         "requestMethod": "POST",
         "sendHeaders": true,
         "headerParameters": {
@@ -37,6 +36,10 @@
             {
               "name": "Content-Type",
               "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Basic ' + $base64(($env.WAZUH_API_USER || 'wazuh') + ':' + ($env.WAZUH_API_PASSWORD || '')) }}"
             }
           ]
         },
