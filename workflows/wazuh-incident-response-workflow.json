@@ -30,6 +30,34 @@
         "conditions": {
           "options": {
             "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "approved-flag",
+              "leftValue": "={{ $json.approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-approval",
+      "name": "Check Approval",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
             "leftValue": "",
             "typeValidation": "strict"
           },
@@ -156,6 +184,16 @@
     },
     {
       "parameters": {
+        "jsCode": "// Return a pending approval response with instructions\nconst incident = $('Prepare Response Plan').first().json;\nconst actions = incident.response_plan || {};\n\nconst approvalPayload = { ...incident, approved: true };\n\nreturn {\n  status: 'pending_approval',\n  message: 'Manual approval required before executing automated actions',\n  incident_id: incident.incident_id,\n  actions_to_approve: {\n    block_ip: actions.block_ip,\n    quarantine_host: actions.quarantine_host,\n    collect_forensics: actions.collect_forensics\n  },\n  instructions: 'Resend this incident payload to the same endpoint with approved: true to execute actions.',\n  approval_hint: 'POST to /webhook/incident-response with the sample payload',\n  sample_approval_payload: approvalPayload,\n  timestamp: new Date().toISOString()\n};"
+      },
+      "id": "await-manual-approval",
+      "name": "Await Manual Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
         "jsCode": "// Create comprehensive security notification\nconst incident = $input.first().json;\nconst aiAnalysis = incident.ai_analysis;\nconst responsePlan = incident.response_plan;\n\n// Determine notification urgency\nconst urgency = incident.escalation_required ? 'CRITICAL' : 'HIGH';\nconst color = incident.escalation_required ? '#FF0000' : '#FFA500';\n\n// Create detailed notification\nconst notification = {\n  channel: '#security-alerts',\n  username: 'Wazuh Security Bot',\n  icon_emoji: ':warning:',\n  attachments: [\n    {\n      color: color,\n      title: `${urgency} Security Incident - ${incident.incident_id}`,\n      title_link: `https://wazuh.company.com/alerts/${incident.alert_id}`,\n      fields: [\n        {\n          title: 'Alert ID',\n          value: incident.alert_id,\n          short: true\n        },\n        {\n          title: 'Threat Level',\n          value: aiAnalysis.threat_level.toUpperCase(),\n          short: true\n        },\n        {\n          title: 'Source IP',\n          value: incident.source_ip || 'Unknown',\n          short: true\n        },\n        {\n          title: 'Affected Agent',\n          value: incident.agent_name || 'Unknown',\n          short: true\n        },\n        {\n          title: 'Rule Description',\n          value: incident.rule_description,\n          short: false\n        },\n        {\n          title: 'AI Analysis',\n          value: aiAnalysis.analysis_text.substring(0, 300) + '...',\n          short: false\n        }\n      ],\n      footer: 'Wazuh SIEM',\n      ts: Math.floor(Date.now() / 1000)\n    }\n  ]\n};\n\n// Add actions taken\nconst actionsTaken = [];\nif (responsePlan.block_ip) actionsTaken.push('🚫 IP Blocked');\nif (responsePlan.quarantine_host) actionsTaken.push('🔒 Host Quarantined');\nif (responsePlan.collect_forensics) actionsTaken.push('🔍 Forensics Collected');\n\nif (actionsTaken.length > 0) {\n  notification.attachments[0].fields.push({\n    title: 'Automated Actions Taken',\n    value: actionsTaken.join('\\n'),\n    short: false\n  });\n}\n\nreturn {\n  notification: notification,\n  incident_summary: {\n    incident_id: incident.incident_id,\n    alert_id: incident.alert_id,\n    threat_level: aiAnalysis.threat_level,\n    actions_taken: actionsTaken,\n    notification_sent: true,\n    timestamp: new Date().toISOString()\n  }\n};"
       },
       "id": "create-security-notification",
@@ -266,6 +304,17 @@
       "main": [
         [
           {
+            "node": "Check Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Approval": {
+      "main": [
+        [
+          {
             "node": "Check IP Blocking",
             "type": "main",
             "index": 0
@@ -277,6 +326,24 @@
           },
           {
             "node": "Create Security Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Await Manual Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Await Manual Approval": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
             "type": "main",
             "index": 0
           }
