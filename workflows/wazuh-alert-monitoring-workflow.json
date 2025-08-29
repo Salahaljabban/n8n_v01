@@ -2,7 +2,11 @@
   "name": "Wazuh Alert Monitoring",
   "nodes": [
     {
-      "parameters": {},
+      "parameters": {
+        "mode": "everyX",
+        "value": 5,
+        "unit": "minutes"
+      },
       "id": "b8414d43-43ef-4c81-84f7-348199e7ccce",
       "name": "Alert Polling Trigger",
       "type": "n8n-nodes-base.cron",
@@ -170,19 +174,12 @@
       "parameters": {
         "method": "POST",
         "url": "={{ ($env.WAZUH_INDEXER_URL || 'https://172.20.18.14:9200').replace(/\\/$/, '') + '/wazuh-alerts-4.x-*/_search' }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpBasicAuth",
+        "authentication": "none",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "{{'Basic ' + ('kibanaro' + ':' + 'J*4w.9TV+gfheXR7n98PF+Q1DSaBv9Mc')}}"
-            }
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Authorization", "value": "={{ 'Basic ' + Buffer.from(($env.INDEXER_USERNAME || '') + ':' + ($env.INDEXER_PASSWORD || '')).toString('base64') }}" }
           ]
         },
         "sendBody": true,
@@ -227,16 +224,46 @@
         -1488,
         48
       ],
-      "credentials": {
-        "httpBasicAuth": {
-          "id": "35weeG1qVtbwojoV",
-          "name": "Wazuh dashboard - Indexer"
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !!$env.WAZUH_INDEXER_URL }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
         },
-        "httpSslAuth": {
-          "id": "pMoxVfYrKTxHGQY3",
-          "name": "SSL Certificates account"
-        }
-      }
+        "options": {}
+      },
+      "id": "f0a6c9c0-idxr-guard-0001",
+      "name": "Indexer Enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1600,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Indexer disabled via env; produce empty result\nreturn [{ json: { alerts_found: false, alert_count: 0, message: 'Indexer disabled', processed_at: new Date().toISOString() } }];"
+      },
+      "id": "7c5e1a55-skip-indexer-0001",
+      "name": "Indexer Disabled",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1360,
+        -80
+      ]
     },
     {
       "parameters": {
@@ -457,7 +484,7 @@
       "main": [
         [
           {
-            "node": "Fetch Wazuh Alerts",
+            "node": "Indexer Enabled?",
             "type": "main",
             "index": 0
           }
@@ -465,6 +492,35 @@
         [
           {
             "node": "Handle API/Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Indexer Enabled?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Wazuh Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Indexer Disabled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Indexer Disabled": {
+      "main": [
+        [
+          {
+            "node": "Has Alerts?",
             "type": "main",
             "index": 0
           }

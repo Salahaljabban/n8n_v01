@@ -282,7 +282,7 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "timezone": "UTC",
     "saveManualExecutions": true,

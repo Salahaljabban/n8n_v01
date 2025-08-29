@@ -286,6 +286,37 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build payload for Teams/Power Automate approval\nconst incident = $('Prepare Response Plan').first().json;\nconst actions = incident.response_plan || {};\n\n// Prefer public WEBHOOK_URL for cloud callback\nconst base = ($env.WEBHOOK_URL || 'http://192.168.208.49:5678/').replace(/\\/$/, '');\nconst callbackUrl = base.endsWith('/webhook/incident-response') ? base : (base + '/webhook/incident-response');\n\nconst approvalPayload = {\n  type: 'incident_approval_request',\n  incident_id: incident.incident_id,\n  alert_id: incident.alert_id,\n  rule_description: incident.rule_description,\n  threat_level: incident.ai_analysis?.threat_level || 'unknown',\n  actions_to_approve: {\n    block_ip: !!actions.block_ip,\n    quarantine_host: !!actions.quarantine_host,\n    collect_forensics: !!actions.collect_forensics\n  },\n  callback: {\n    method: 'POST',\n    url: callbackUrl,\n    body: {\n      ...incident,\n      approved: true,\n      approval_source: 'microsoft_teams',\n      actions_to_approve: {\n        block_ip: !!actions.block_ip,\n        quarantine_host: !!actions.quarantine_host,\n        collect_forensics: !!actions.collect_forensics\n      }\n    }\n  },\n  submitted_at: new Date().toISOString()\n};\n\nreturn approvalPayload;"
+      },
+      "id": "build-teams-approval-payload",
+      "name": "Build Teams Approval Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 180]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "https://default0313b9d1e4b045299bfbbf4663debc.49.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/e97b66851d89414ba53d7910c45f2105/triggers/manual/paths/invoke/?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=Y1OmGc7CTFpd9TGCP3gHelewdew_VOBEF67tn96NmqQ",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{ $json }}",
+        "options": { "timeout": 20000 }
+      },
+      "id": "send-teams-approval",
+      "name": "Send Teams Approval",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1320, 180]
     }
   ],
   "connections": {
@@ -333,6 +364,22 @@
         [
           {
             "node": "Await Manual Approval",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Teams Approval Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Teams Approval Payload": {
+      "main": [
+        [
+          {
+            "node": "Send Teams Approval",
             "type": "main",
             "index": 0
           }
@@ -476,7 +523,7 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "timezone": "UTC",
     "saveManualExecutions": true,
