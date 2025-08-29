@@ -1,7 +1,13 @@
 {
-  "name": "Real-time Wazuh Webhook Receiver",
+  "name": "Wazuh → n8n (Normalize, Route, Buffer, Notify)",
+  "active": false,
   "nodes": [
     {
+      "id": "wazuh-webhook-receiver",
+      "name": "Wazuh Webhook Receiver",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
       "parameters": {
         "httpMethod": "POST",
         "path": "wazuh-webhook",
@@ -10,391 +16,254 @@
           "noResponseBody": false
         }
       },
-      "id": "wazuh-webhook-receiver",
-      "name": "Wazuh Webhook Receiver",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [240, 300],
       "webhookId": "wazuh-webhook"
     },
     {
-      "parameters": {
-        "jsCode": "// Validate and normalize incoming Wazuh alert\nconst rawAlert = $input.first().json;\n\n// Validate required fields\nif (!rawAlert.rule || !rawAlert.rule.id) {\n  throw new Error('Invalid Wazuh alert: missing rule information');\n}\n\n// Extract and normalize alert data\nconst alert = {\n  alert_id: rawAlert.id || `alert-${Date.now()}`,\n  timestamp: rawAlert.timestamp || new Date().toISOString(),\n  rule_id: rawAlert.rule.id,\n  rule_description: rawAlert.rule.description || 'Unknown rule',\n  rule_level: rawAlert.rule.level || 0,\n  agent_id: rawAlert.agent?.id || 'unknown',\n  agent_name: rawAlert.agent?.name || 'unknown',\n  agent_ip: rawAlert.agent?.ip || 'unknown',\n  location: rawAlert.location || 'unknown',\n  full_log: rawAlert.full_log || '',\n  decoder_name: rawAlert.decoder?.name || 'unknown',\n  data: rawAlert.data || {},\n  previous_output: rawAlert.previous_output || '',\n  syscheck: rawAlert.syscheck || null,\n  rootcheck: rawAlert.rootcheck || null\n};\n\n// Determine alert severity and priority\nlet severity = 'low';\nlet priority = 'normal';\nlet requiresImmediateAction = false;\n\nif (alert.rule_level >= 12) {\n  severity = 'critical';\n  priority = 'high';\n  requiresImmediateAction = true;\n} else if (alert.rule_level >= 7) {\n  severity = 'high';\n  priority = 'high';\n  requiresImmediateAction = true;\n} else if (alert.rule_level >= 4) {\n  severity = 'medium';\n  priority = 'normal';\n}\n\n// Check for specific high-priority indicators\nconst highPriorityKeywords = ['attack', 'intrusion', 'malware', 'rootkit', 'exploit', 'breach', 'unauthorized'];\nconst ruleDesc = alert.rule_description.toLowerCase();\nif (highPriorityKeywords.some(keyword => ruleDesc.includes(keyword))) {\n  requiresImmediateAction = true;\n  if (severity === 'low') severity = 'medium';\n}\n\nreturn {\n  ...alert,\n  severity: severity,\n  priority: priority,\n  requires_immediate_action: requiresImmediateAction,\n  received_at: new Date().toISOString(),\n  processing_status: 'received',\n  source: 'wazuh_webhook'\n};"
-      },
       "id": "normalize-alert",
       "name": "Normalize Alert",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 300]
+      "position": [480, 300],
+      "parameters": {
+        "jsCode": "// Normalize & enrich incoming Wazuh alert\nconst raw = $input.first().json || {};\nif (!raw.rule || !raw.rule.id) throw new Error('Invalid Wazuh alert: missing rule.id');\nconst alert = {\n  alert_id: raw.id || `alert-${Date.now()}`,\n  timestamp: raw.timestamp || new Date().toISOString(),\n  rule_id: raw.rule.id,\n  rule_description: raw.rule.description || 'Unknown rule',\n  rule_level: Number(raw.rule.level || 0),\n  agent_id: raw.agent?.id || 'unknown',\n  agent_name: raw.agent?.name || 'unknown',\n  agent_ip: raw.agent?.ip || 'unknown',\n  location: raw.location || 'unknown',\n  full_log: raw.full_log || '',\n  decoder_name: raw.decoder?.name || 'unknown',\n  data: raw.data || {},\n  previous_output: raw.previous_output || '',\n  syscheck: raw.syscheck || null,\n  rootcheck: raw.rootcheck || null\n};\nlet severity = 'low';\nlet priority = 'normal';\nlet requiresImmediateAction = false;\nif (alert.rule_level >= 12) { severity = 'critical'; priority = 'high'; requiresImmediateAction = true; }\nelse if (alert.rule_level >= 7) { severity = 'high'; priority = 'high'; requiresImmediateAction = true; }\nelse if (alert.rule_level >= 4) { severity = 'medium'; }\nconst keywords = ['attack','intrusion','malware','rootkit','exploit','breach','unauthorized'];\nif (keywords.some(k => (alert.rule_description||'').toLowerCase().includes(k))) {\n  requiresImmediateAction = true; if (severity === 'low') severity = 'medium';\n}\nreturn {\n  ...alert,\n  severity,\n  priority,\n  requires_immediate_action: requiresImmediateAction,\n  received_at: new Date().toISOString(),\n  processing_status: 'received',\n  source: 'wazuh_webhook'\n};"
+      }
     },
     {
+      "id": "get-wazuh-token",
+      "name": "Get Wazuh Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [480, 480],
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          },
-          "conditions": [
-            {
-              "id": "high-priority-check",
-              "leftValue": "={{ $json.requires_immediate_action }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true"
-              }
-            }
-          ],
-          "combinator": "and"
+        "url": "https://172.20.18.14:55000/security/user/authenticate",
+        "requestMethod": "POST",
+        "jsonBody": "{ \"username\": \"wazuh\", \"password\": \"{{ $env.WAZUH_API_PASSWORD }}\" }",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "options": {
+          "timeout": 10000,
+          "ignoreSSLIssues": true,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 2,
+            "retryInterval": 2000
+          }
         },
-        "options": {}
-      },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        }
+      }
+    },
+    {
       "id": "check-priority",
       "name": "Check Priority",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [680, 300]
-    },
-    {
+      "position": [720, 300],
       "parameters": {
-        "url": "http://n8n:5678/webhook/high-priority-alert",
-        "authentication": "none",
-        "requestMethod": "POST",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
+        "conditions": {
+          "combinator": "and",
+          "options": { "caseSensitive": true, "typeValidation": "strict" },
+          "conditions": [
             {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "X-Source",
-              "value": "wazuh-webhook-receiver"
+              "leftValue": "={{ $json.requires_immediate_action }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
             }
           ]
-        },
-        "sendBody": true,
-        "bodyContentType": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": {
-          "timeout": 30000,
-          "retry": {
-            "enabled": true,
-            "maxRetries": 2,
-            "retryInterval": 3000
-          }
         }
-      },
+      }
+    },
+    {
       "id": "route-to-high-priority",
       "name": "Route to High Priority",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [900, 200]
-    },
-    {
+      "position": [960, 200],
       "parameters": {
-        "url": "https://172.20.18.14:55000/events",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "url": "http://n8n:5678/webhook/high-priority-alert",
         "requestMethod": "POST",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{ $json }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Source", "value": "wazuh-webhook-receiver" }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "retry": { "enabled": true, "maxRetries": 2, "retryInterval": 3000 }
+        }
+      }
+    },
+    {
+      "id": "buffer-standard-alert",
+      "name": "Buffer Standard Alert (FastAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [960, 420],
+      "parameters": {
+        "url": "http://foundation-sec:8000/alerts",
+        "requestMethod": "POST",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{ $json }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
             {
               "name": "Authorization",
-              "value": "Bearer {{ $credentials.wazuhApi.token }}"
+              "value": "Bearer {{ $node[\"Get Wazuh Token\"].json.data.token }}"
             }
           ]
         },
-        "sendBody": true,
-        "bodyContentType": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {
-          "timeout": 10000,
-          "retry": {
-            "enabled": true,
-            "maxRetries": 3,
-            "retryInterval": 2000
-          }
+          "timeout": 15000,
+          "retry": { "enabled": true, "maxRetries": 3, "retryInterval": 2000 }
         }
-      },
-      "id": "buffer-standard-alert",
-      "name": "Buffer Standard Alert",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [900, 400]
+      }
     },
     {
-      "parameters": {
-        "jsCode": "// Log alert processing and create summary\nconst alert = $input.first().json;\nconst isHighPriority = alert.requires_immediate_action;\n\nconst logEntry = {\n  timestamp: new Date().toISOString(),\n  alert_id: alert.alert_id,\n  rule_id: alert.rule_id,\n  rule_description: alert.rule_description,\n  severity: alert.severity,\n  agent_name: alert.agent_name,\n  processing_path: isHighPriority ? 'high_priority_workflow' : 'standard_buffer',\n  response_time: Date.now() - new Date(alert.received_at).getTime()\n};\n\nconsole.log(`Wazuh alert processed: ${alert.alert_id} - ${alert.severity} severity - routed to ${logEntry.processing_path}`);\n\nreturn {\n  processing_summary: logEntry,\n  alert_processed: true,\n  routing_decision: isHighPriority ? 'immediate_processing' : 'buffered_processing'\n};"
-      },
       "id": "log-processing",
       "name": "Log Processing",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, 300]
+      "position": [1200, 300],
+      "parameters": {
+        "jsCode": "const a = $('Normalize Alert').first().json; const hp = a.requires_immediate_action; const log = { timestamp: new Date().toISOString(), alert_id: a.alert_id, rule_id: a.rule_id, rule_description: a.rule_description, severity: a.severity, agent: `${a.agent_name} (${a.agent_ip})`, processing_path: hp ? 'high_priority' : 'standard', response_ms: Date.now() - new Date(a.received_at).getTime() }; console.log('Wazuh alert processed', log); return { processing_summary: log, notification_needed: a.severity !== 'low', severity: a.severity, alert: a };"
+      }
     },
     {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          },
-          "conditions": [
-            {
-              "id": "should-notify",
-              "leftValue": "={{ $json.severity }}",
-              "rightValue": "low",
-              "operator": {
-                "type": "string",
-                "operation": "notEquals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
       "id": "check-notification",
-      "name": "Check Notification",
+      "name": "Check Notification Needed",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1340, 300]
+      "position": [1420, 300],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": { "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.notification_needed }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ]
+        }
+      }
     },
     {
-      "parameters": {
-        "jsCode": "// Create Slack notification for medium/high alerts\nconst alert = $('Normalize Alert').first().json;\n\nconst severityEmoji = {\n  critical: '🚨',\n  high: '⚠️',\n  medium: '🔶',\n  low: 'ℹ️'\n};\n\nconst severityColor = {\n  critical: '#FF0000',\n  high: '#FFA500',\n  medium: '#FFFF00',\n  low: '#00FF00'\n};\n\nconst slackMessage = {\n  channel: '#security-monitoring',\n  username: 'Wazuh Alert Bot',\n  icon_emoji: ':shield:',\n  attachments: [\n    {\n      color: severityColor[alert.severity],\n      title: `${severityEmoji[alert.severity]} Wazuh Security Alert - ${alert.severity.toUpperCase()}`,\n      fields: [\n        {\n          title: 'Alert ID',\n          value: alert.alert_id,\n          short: true\n        },\n        {\n          title: 'Rule Level',\n          value: alert.rule_level.toString(),\n          short: true\n        },\n        {\n          title: 'Agent',\n          value: `${alert.agent_name} (${alert.agent_ip})`,\n          short: true\n        },\n        {\n          title: 'Location',\n          value: alert.location,\n          short: true\n        },\n        {\n          title: 'Rule Description',\n          value: alert.rule_description,\n          short: false\n        }\n      ],\n      footer: 'Wazuh SIEM',\n      ts: Math.floor(new Date(alert.timestamp).getTime() / 1000)\n    }\n  ]\n};\n\nif (alert.full_log && alert.full_log.length > 0) {\n  slackMessage.attachments[0].fields.push({\n    title: 'Log Sample',\n    value: `\\`\\`\\`${alert.full_log.substring(0, 200)}...\\`\\`\\``,\n    short: false\n  });\n}\n\nreturn {\n  slack_message: slackMessage,\n  notification_sent: true,\n  alert_id: alert.alert_id\n};"
-      },
-      "id": "create-slack-alert",
-      "name": "Create Slack Alert",
+      "id": "create-slack-payload",
+      "name": "Create Slack Payload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 200]
+      "position": [1640, 200],
+      "parameters": {
+        "jsCode": "const a = $json.alert; const emoji = { critical: '🚨', high: '⚠️', medium: '🔶', low: 'ℹ️' }; const color = { critical: '#FF0000', high: '#FFA500', medium: '#FFFF00', low: '#00FF00' }; const payload = { text: `${emoji[a.severity]} Wazuh ${a.severity.toUpperCase()} alert`, attachments: [{ color: color[a.severity], fields: [ { title: 'Alert ID', value: a.alert_id, short: true }, { title: 'Rule Level', value: String(a.rule_level), short: true }, { title: 'Agent', value: `${a.agent_name} (${a.agent_ip})`, short: true }, { title: 'Location', value: a.location, short: true }, { title: 'Rule', value: a.rule_description, short: false } ], footer: 'Wazuh SIEM', ts: Math.floor(new Date(a.timestamp).getTime()/1000) }] }; if (a.full_log) payload.attachments[0].fields.push({ title: 'Log Sample', value: '```' + a.full_log.substring(0, 200) + '...```', short: false }); return { slack: payload };"
+      }
     },
     {
+      "id": "send-slack",
+      "name": "Send Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1860, 200],
       "parameters": {
-        "jsCode": "// Create final webhook response\nconst inputs = $input.all();\nconst originalAlert = $('Normalize Alert').first().json;\n\nlet highPriorityProcessed = false;\nlet buffered = false;\nlet notificationSent = false;\n\n// Check results from different processing paths\ninputs.forEach(input => {\n  if (input.json.high_priority_processed) highPriorityProcessed = true;\n  if (input.json.alert_buffered) buffered = true;\n  if (input.json.notification_sent) notificationSent = true;\n});\n\nconst response = {\n  status: 'success',\n  alert_id: originalAlert.alert_id,\n  severity: originalAlert.severity,\n  processing_path: originalAlert.requires_immediate_action ? 'high_priority' : 'standard',\n  actions_taken: {\n    high_priority_processed: highPriorityProcessed,\n    buffered_for_polling: buffered,\n    notification_sent: notificationSent\n  },\n  received_at: originalAlert.received_at,\n  processed_at: new Date().toISOString(),\n  message: `Alert ${originalAlert.alert_id} processed successfully via ${originalAlert.requires_immediate_action ? 'high-priority workflow' : 'standard buffering'}`\n};\n\nconsole.log(`Webhook processing complete for alert ${originalAlert.alert_id}`);\n\nreturn response;"
-      },
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
+        "requestMethod": "POST",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{ $json.slack }}",
+        "options": { "timeout": 8000 },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        }
+      }
+    },
+    {
       "id": "create-response",
       "name": "Create Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1780, 300]
+      "position": [2080, 300],
+      "parameters": {
+        "jsCode": "const a = $('Normalize Alert').first().json; const resp = { status: 'success', alert_id: a.alert_id, severity: a.severity, processing_path: a.requires_immediate_action ? 'high_priority' : 'standard', received_at: a.received_at, processed_at: new Date().toISOString() }; return resp;"
+      }
     },
     {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ $json }}"
-      },
       "id": "webhook-response",
       "name": "Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [2000, 300]
+      "position": [2300, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      }
     },
     {
-      "parameters": {
-        "jsCode": "// Handle webhook processing errors\nconst error = $input.first();\nconst originalAlert = $('Normalize Alert').first()?.json;\n\nconsole.error('Webhook processing error:', error);\n\nconst errorResponse = {\n  status: 'error',\n  alert_id: originalAlert?.alert_id || 'unknown',\n  error_message: error.message || 'Unknown error occurred',\n  timestamp: new Date().toISOString(),\n  fallback_action: 'Alert logged for manual review'\n};\n\n// Log error for monitoring\nconsole.log(`ERROR: Failed to process Wazuh webhook alert: ${errorResponse.error_message}`);\n\nreturn errorResponse;"
-      },
       "id": "handle-error",
       "name": "Handle Error",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1340, 500]
+      "position": [1420, 520],
+      "parameters": {
+        "jsCode": "const e = $input.first(); const a = $('Normalize Alert').first()?.json; return { status: 'error', alert_id: a?.alert_id || 'unknown', error_message: e.message || 'Unknown error', timestamp: new Date().toISOString(), fallback_action: 'Logged for manual review' };"
+      }
     }
   ],
   "connections": {
-    "Wazuh Webhook Receiver": {
-      "main": [
-        [
-          {
-            "node": "Normalize Alert",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
+    "Wazuh Webhook Receiver": { "main": [[{ "node": "Normalize Alert", "type": "main", "index": 0 }]] },
     "Normalize Alert": {
-      "main": [
-        [
-          {
-            "node": "Check Priority",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ],
-      "error": [
-        [
-          {
-            "node": "Handle Error",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Check Priority", "type": "main", "index": 0 }]],
+      "error": [[{ "node": "Handle Error", "type": "main", "index": 0 }]]
     },
+    "Get Wazuh Token": {},
     "Check Priority": {
       "main": [
-        [
-          {
-            "node": "Route to High Priority",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Buffer Standard Alert",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Route to High Priority", "type": "main", "index": 0 }],
+        [{ "node": "Buffer Standard Alert (FastAPI)", "type": "main", "index": 0 }]
       ]
     },
     "Route to High Priority": {
-      "main": [
-        [
-          {
-            "node": "Log Processing",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ],
-      "error": [
-        [
-          {
-            "node": "Handle Error",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Log Processing", "type": "main", "index": 0 }]],
+      "error": [[{ "node": "Handle Error", "type": "main", "index": 0 }]]
     },
-    "Buffer Standard Alert": {
-      "main": [
-        [
-          {
-            "node": "Log Processing",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ],
-      "error": [
-        [
-          {
-            "node": "Handle Error",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Buffer Standard Alert (FastAPI)": {
+      "main": [[{ "node": "Log Processing", "type": "main", "index": 0 }]],
+      "error": [[{ "node": "Handle Error", "type": "main", "index": 0 }]]
     },
     "Log Processing": {
+      "main": [[{ "node": "Check Notification Needed", "type": "main", "index": 0 }]]
+    },
+    "Check Notification Needed": {
       "main": [
-        [
-          {
-            "node": "Check Notification",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Create Slack Payload", "type": "main", "index": 0 }],
+        [{ "node": "Create Response", "type": "main", "index": 0 }]
       ]
     },
-    "Check Notification": {
-      "main": [
-        [
-          {
-            "node": "Create Slack Alert",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Create Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Create Slack Alert": {
-      "main": [
-        [
-          {
-            "node": "Create Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Create Response": {
-      "main": [
-        [
-          {
-            "node": "Webhook Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Handle Error": {
-      "main": [
-        [
-          {
-            "node": "Webhook Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Create Slack Payload": { "main": [[{ "node": "Send Slack", "type": "main", "index": 0 }]] },
+    "Send Slack": { "main": [[{ "node": "Create Response", "type": "main", "index": 0 }]] },
+    "Create Response": { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] },
+    "Handle Error": { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] }
   },
-  "active": false,
   "settings": {
     "timezone": "UTC",
     "saveManualExecutions": true,
     "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": {
-      "enabled": true
-    }
+    "errorWorkflow": { "enabled": true }
   },
-  "versionId": "1",
-  "meta": {
-    "templateCredsSetupCompleted": true
-  },
-  "id": "wazuh-direct-webhook-receiver-workflow",
-  "tags": [
-    {
-      "createdAt": "2025-01-21T18:00:00.000Z",
-      "updatedAt": "2025-01-21T18:00:00.000Z",
-      "id": "wazuh-integration",
-      "name": "Wazuh Integration"
-    },
-    {
-      "createdAt": "2025-01-21T18:00:00.000Z",
-      "updatedAt": "2025-01-21T18:00:00.000Z",
-      "id": "webhook-receiver",
-      "name": "Webhook Receiver"
-    },
-    {
-      "createdAt": "2025-01-21T18:00:00.000Z",
-      "updatedAt": "2025-01-21T18:00:00.000Z",
-      "id": "real-time",
-      "name": "Real-time"
-    }
-  ]
+  "meta": { "templateCredsSetupCompleted": true },
+  "versionId": "1"
 }

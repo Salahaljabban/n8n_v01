@@ -10,18 +10,24 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_all_workflows():
-    """Get all workflows from N8N"""
-    url = f"{os.getenv('N8N_SERVER', 'http://localhost:5678')}/api/v1/workflows"
-    headers = {
-        'X-N8N-API-KEY': os.getenv('N8N_API_TOKEN')
-    }
-    
+    """Get all workflows from N8N Public API using API token"""
+    base_url = os.getenv('N8N_SERVER', 'http://localhost:5678')
+    api_token = os.getenv('N8N_API_TOKEN')
+
+    if not api_token:
+        print('❌ N8N_API_TOKEN not set. Set it in .env or environment.')
+        return None
+
+    url = f"{base_url}/api/v1/workflows"
+    headers = { 'X-N8N-API-KEY': api_token }
+
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
             return response.json()
         else:
             print(f"❌ Failed to get workflows: {response.status_code}")
+            print(f"Response: {response.text}")
             return None
     except Exception as e:
         print(f"❌ Error getting workflows: {e}")

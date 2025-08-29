@@ -3,13 +3,21 @@ import requests
 import json
 import sys
 import os
+from dotenv import load_dotenv
 
-# N8N Configuration
-N8N_BASE_URL = "http://localhost:5678"
-N8N_API_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2OGRlNzY3MC0wNjdmLTQ3YmEtYWU4Ni05ZjdlMDg0MzliNWMiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzU2MzY5OTIyfQ.aw4hvEM5ndrvLjkEx938ROsy0WM8Kn-2eOEE3f4X87s"
+# Load environment variables from .env if present
+load_dotenv()
+
+# N8N Configuration from env
+N8N_BASE_URL = os.getenv("N8N_SERVER", "http://localhost:5678")
+N8N_API_TOKEN = os.getenv("N8N_API_TOKEN")
 
 def import_workflow(workflow_file_path):
     """Import a single workflow file to N8N"""
+    
+    if not N8N_API_TOKEN:
+        print("Error: N8N_API_TOKEN is not set. Set it in your .env or environment.")
+        return False
     
     # Check if file exists
     if not os.path.exists(workflow_file_path):
@@ -104,16 +112,16 @@ if __name__ == "__main__":
         print("Usage: python3 import-single-workflow.py <workflow_file_path>")
         print("Example: python3 import-single-workflow.py workflows/ai-chat-workflow.json")
         sys.exit(1)
-    
+
     workflow_file = sys.argv[1]
-    
+
     print(f"Importing workflow: {workflow_file}")
     print(f"N8N Server: {N8N_BASE_URL}")
     print("-" * 50)
-    
+
     # Import the workflow
     success = import_workflow(workflow_file)
-    
+
     if success:
         print("\n🎉 Workflow import completed successfully!")
     else:

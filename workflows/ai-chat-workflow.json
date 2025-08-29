@@ -1,5 +1,5 @@
 {
-  "name": "Ollama AI Chat Integration",
+  "name": "Foundation-Sec AI Chat",
   "nodes": [
     {
       "parameters": {
@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "url": "http://foundation-sec-ai:11434/api/chat",
+        "url": "http://foundation-sec:8000/v1/chat/completions",
         "authentication": "none",
         "requestMethod": "POST",
         "sendHeaders": true,
@@ -31,20 +31,20 @@
         },
         "sendBody": true,
         "bodyContentType": "json",
-        "jsonBody": "={\n  \"model\": \"tinyllama\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $json.body.message || 'Hello' }}\"\n    }\n  ],\n  \"stream\": false\n}",
+        "jsonBody": "={\n  \"model\": \"={{ $json.body.model || 'foundation-sec' }}\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a helpful security assistant.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $json.body.message || 'Hello' }}\"\n    }\n  ],\n  \"max_tokens\": 256,\n  \"temperature\": 0.7,\n  \"stream\": false\n}",
         "options": {
           "timeout": 30000
         }
       },
-      "id": "ollama-request",
-      "name": "Ollama API Request",
+      "id": "foundation-sec-request",
+      "name": "Foundation-Sec API Request",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [460, 300]
     },
     {
       "parameters": {
-        "jsCode": "// Extract the AI response from Ollama API\nconst response = $input.first().json;\n\n// Format the response for return\nconst aiMessage = response.message?.content || 'No response from AI';\nconst model = response.model || 'unknown';\n\nreturn {\n  success: true,\n  ai_response: aiMessage,\n  model_used: model,\n  timestamp: new Date().toISOString(),\n  original_message: $('Webhook').first().json.body?.message || 'No message provided'\n};"
+        "jsCode": "// Extract the AI response from Foundation-Sec API (OpenAI style)\nconst response = $input.first().json;\nconst choice = (response && response.choices && response.choices[0]) ? response.choices[0] : null;\nconst aiMessage = choice && choice.message && choice.message.content ? choice.message.content : 'No response from AI';\nconst model = response.model || 'foundation-sec';\n\nreturn {\n  success: true,\n  ai_response: aiMessage,\n  model_used: model,\n  timestamp: new Date().toISOString(),\n  original_message: $('Webhook').first().json.body?.message || 'No message provided'\n};"
       },
       "id": "format-response",
       "name": "Format Response",
@@ -69,14 +69,14 @@
       "main": [
         [
           {
-            "node": "Ollama API Request",
+            "node": "Foundation-Sec API Request",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Ollama API Request": {
+    "Foundation-Sec API Request": {
       "main": [
         [
           {

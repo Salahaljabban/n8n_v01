@@ -104,7 +104,7 @@ This integration implements a comprehensive three-tier architecture:
 Create a `.env` file with:
 
 ```env
-# N8N Configuration
+# N8N Configuration (Basic Auth)
 N8N_BASIC_AUTH_ACTIVE=true
 N8N_BASIC_AUTH_USER=admin
 N8N_BASIC_AUTH_PASSWORD=your_secure_password
@@ -117,6 +117,11 @@ WAZUH_API_PASSWORD=MDymLhH.E?RZFtuUVV2KMW01X3b99y69
 # Slack Configuration (Optional)
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
 ```
+
+### N8N Authentication
+- Use `N8N_BASIC_AUTH_ACTIVE`, `N8N_BASIC_AUTH_USER`, `N8N_BASIC_AUTH_PASSWORD` to protect the n8n UI.
+- `N8N_API_TOKEN` is required for the Public API (set in UI or via script). Do not commit real tokens.
+- Deprecated: `N8N_USERNAME`/`N8N_PASSWORD` (not used by n8n).
 
 ### Notes
 
@@ -156,6 +161,15 @@ The test suite validates:
 - ✅ Workflow execution
 - ✅ Alert processing
 - ✅ Incident response
+
+### Wazuh Token Auth Checklist
+
+- Ensure Wazuh API env vars are set: `WAZUH_API_URL`, `WAZUH_API_USER`, `WAZUH_API_PASSWORD`.
+- In n8n UI, open “Wazuh Authentication” workflow and run once manually or POST to `/webhook/bridge-auth`.
+- Confirm response contains a raw JWT token string (length > 50).
+- In dependent workflows, pass the token as `Authorization: Bearer <token>` to Wazuh endpoints.
+- Test a protected endpoint with the token, e.g. `GET {{WAZUH_API_URL}}/agents?pretty=true`.
+- If SSL issues occur, enable “Allow Unauthorized Certs” on the HTTP Request node for testing.
 
 ### Manual Testing
 

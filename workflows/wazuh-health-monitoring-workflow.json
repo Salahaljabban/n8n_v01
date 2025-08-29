@@ -6,36 +6,90 @@
         "rule": {
           "interval": [
             {
-              "field": "minutes",
-              "minutesInterval": 5
+              "field": "minutes"
             }
           ]
         }
       },
-      "id": "health-check-schedule",
+      "id": "59f66292-931e-4487-ae8b-b0d4a4296391",
       "name": "Health Check Schedule",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
-      "position": [240, 300]
+      "position": [
+        -736,
+        -64
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Initialize health check session\nconst checkId = `health-${Date.now()}`;\nconst timestamp = new Date().toISOString();\n\nconsole.log(`Starting Wazuh API health check: ${checkId}`);\n\nreturn {\n  check_id: checkId,\n  start_time: timestamp,\n  wazuh_server: '172.20.18.14:55000',\n  check_type: 'scheduled_health_monitoring'\n};"
+        "jsCode": "// Initialize health check session\nconst checkId = `health-${Date.now()}`;\nconst timestamp = new Date().toISOString();\n\nconsole.log(`Starting Wazuh API health check: ${checkId}`);\n\nreturn {\n  check_id: checkId,\n  start_time: timestamp,\n  wazuh_server: ($env.WAZUH_API_URL || 'https://172.20.18.14:55000').replace('https://','').replace(/\\/$/, ''),\n  check_type: 'scheduled_health_monitoring'\n};"
       },
-      "id": "initialize-health-check",
+      "id": "f1131519-c2d1-4702-bb3f-c0772ecc3c4b",
       "name": "Initialize Health Check",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 300]
+      "position": [
+        -448,
+        -112
+      ]
     },
     {
       "parameters": {
-        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/' }}",
-        "authentication": "none",
-        "requestMethod": "GET",
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "username",
+              "value": "wazuh"
+            },
+            {
+              "name": "password",
+              "value": "MDymLhH.E?RZFtuUVV2KMW01X3b99y69"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "timeout": 20000
+        }
+      },
+      "id": "fadfa4f3-ddba-4620-bb9d-768a8968558c",
+      "name": "Get Wazuh Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -160,
+        -112
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "8Cc3P9EWCNkZvPOC",
+          "name": "WAZUH_API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/cluster/status' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $node[\"Get Wazuh Token\"].json[\"data\"][\"token\"] }}"
+            },
             {
               "name": "User-Agent",
               "value": "n8n-health-monitor/1.0"
@@ -43,130 +97,79 @@
           ]
         },
         "options": {
-          "timeout": 10000,
-          "retry": {
-            "enabled": true,
-            "maxRetries": 2,
-            "retryInterval": 3000
-          },
-          "allowUnauthorizedCerts": true
+          "allowUnauthorizedCerts": true,
+          "timeout": 10000
         }
       },
-      "id": "check-wazuh-health",
-      "name": "Check Wazuh Health",
+      "id": "aa42f20b-3db8-48c1-8a03-3ff021553819",
+      "name": "Wazuh Cluster Status",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [680, 300]
-    },
-    {
-      "parameters": {
-        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate?raw=true' }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpBasicAuth",
-        "requestMethod": "POST",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": false,
-        "options": {
-          "timeout": 20000,
-          "retry": {
-            "enabled": true,
-            "maxRetries": 2,
-            "retryInterval": 1000
-          },
-          "allowUnauthorizedCerts": true
-        }
-      },
-      "id": "get-wazuh-token",
-      "name": "Get Wazuh Token",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [900, 180]
+      "position": [
+        80,
+        -240
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
         "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/manager/status' }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "requestMethod": "GET",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Content-Type",
-              "value": "application/json"
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $node[\"Get Wazuh Token\"].json[\"data\"][\"token\"] }}"
             },
             {
-              "name": "Authorization",
-              "value": "={{ 'Bearer ' + $('Get Wazuh Token').first().json }}"
+              "name": "User-Agent",
+              "value": "n8n-health-monitor/1.0"
             }
           ]
         },
         "options": {
-          "timeout": 15000,
-          "retry": {
-            "enabled": true,
-            "maxRetries": 1,
-            "retryInterval": 5000
-          },
-          "allowUnauthorizedCerts": true
+          "allowUnauthorizedCerts": true,
+          "timeout": 15000
         }
       },
-      "id": "check-wazuh-connectivity",
+      "id": "7efd3efb-4803-4ac7-abce-165c4ed21ba7",
       "name": "Check Wazuh Connectivity",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [680, 480]
+      "position": [
+        80,
+        0
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
-        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/cluster/status' }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "requestMethod": "GET",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "={{ 'Bearer ' + $('Get Wazuh Token').first().json }}"
-            }
-          ]
-        },
-        "options": {
-          "timeout": 10000,
-          "retry": {
-            "enabled": false
-          },
-          "allowUnauthorizedCerts": true
-        }
+        "mode": "wait",
+        "options": {}
       },
-      "id": "get-cluster-status",
-      "name": "Get Cluster Status",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [680, 120]
+      "id": "67819b22-7627-4beb-bf9e-7da02f8385bb",
+      "name": "Wait for Health Checks",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        336,
+        -128
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Process health check results\nconst initData = $('Initialize Health Check').first().json;\nconst healthResponse = $('Check Wazuh Health').first().json;\nconst wazuhResponse = $('Check Wazuh Connectivity').first().json;\nconst clusterResponse = $('Get Cluster Status').first().json;\n\nconst endTime = new Date().toISOString();\nconst responseTime = Date.now() - new Date(initData.start_time).getTime();\n\n// Analyze Wazuh API health\nconst wazuhHealth = {\n  status: healthResponse?.status || (healthResponse ? 'healthy' : 'unknown'),\n  api_accessible: !!healthResponse,\n  response_time_ms: responseTime\n};\n\n// Analyze Wazuh manager status\nconst managerStatus = {\n  status: wazuhResponse?.data?.status || 'unknown',\n  version: wazuhResponse?.data?.version || 'unknown',\n  compilation_date: wazuhResponse?.data?.compilation_date || null,\n  api_response_time: responseTime\n};\n\n// Analyze cluster status\nconst clusterStatus = {\n  enabled: clusterResponse?.data?.enabled || false,\n  running: clusterResponse?.data?.running || 'unknown',\n  nodes: clusterResponse?.data?.nodes || []\n};\n\n// Determine overall health status\nlet overallStatus = 'healthy';\nconst issues = [];\n\nif (!wazuhHealth.api_accessible) {\n  overallStatus = 'critical';\n  issues.push('Wazuh API is not accessible');\n}\n\nif (managerStatus.status !== 'running') {\n  overallStatus = 'degraded';\n  issues.push('Wazuh manager is not running');\n}\n\nif (responseTime > 5000) {\n  overallStatus = 'warning';\n  issues.push('Slow API response time detected');\n}\n\nif (clusterStatus.enabled && clusterStatus.running !== 'yes') {\n  overallStatus = 'warning';\n  issues.push('Cluster is enabled but not running properly');\n}\n\nif (issues.length > 2) {\n  overallStatus = 'critical';\n}\n\nreturn {\n  check_id: initData.check_id,\n  timestamp: endTime,\n  overall_status: overallStatus,\n  wazuh_health: wazuhHealth,\n  manager_status: managerStatus,\n  cluster_status: clusterStatus,\n  issues: issues,\n  requires_attention: overallStatus !== 'healthy',\n  check_duration_ms: responseTime\n};"
+        "jsCode": "// Process health check results safely\nconst safeJson = (name) => { try { return $(name).first().json || null; } catch { return null; } };\n\nconst initData    = safeJson('Initialize Health Check') || {};\nconst clusterResp = safeJson('Wazuh Cluster Status');     // /cluster/status\nconst mgrStatus   = safeJson('Check Wazuh Connectivity'); // /manager/status\n\nconst endTime = new Date().toISOString();\nconst startTs = initData.start_time ? new Date(initData.start_time).getTime() : Date.now();\nconst responseTime = Date.now() - startTs;\n\nconst clusterData = clusterResp?.data || null; // { status: 'running' | ... }\nconst managerData = mgrStatus?.data || null;   // { status: 'running' | ... }\n\nconst apiAccessible = !!clusterResp || !!mgrStatus;\n\nconst wazuhHealth = {\n  status: clusterData?.status || (apiAccessible ? 'unknown' : 'unreachable'),\n  api_accessible: apiAccessible,\n  response_time_ms: responseTime,\n};\n\nconst managerStatus = {\n  status: managerData?.status || 'unknown',\n  version: null,\n  compilation_date: null,\n  api_response_time: responseTime,\n};\n\nlet overallStatus = 'healthy';\nconst issues = [];\n\nif (!apiAccessible) {\n  overallStatus = 'critical';\n  issues.push('Wazuh API is not accessible');\n}\n\nif ((managerStatus.status || 'unknown') !== 'running') {\n  overallStatus = overallStatus === 'critical' ? 'critical' : 'degraded';\n  issues.push('Wazuh manager is not running');\n}\n\nif (responseTime > 5000) {\n  if (overallStatus === 'healthy') overallStatus = 'warning';\n  issues.push('Slow API response time detected');\n}\n\nif (issues.length > 2) {\n  overallStatus = 'critical';\n}\n\nconst out = {\n  check_id: initData.check_id || `health-${Date.now()}`,\n  start_time: initData.start_time || new Date(Date.now() - responseTime).toISOString(),\n  timestamp: endTime,\n  wazuh_server: initData.wazuh_server || '172.20.18.14:55000',\n  check_type: initData.check_type || 'scheduled_health_monitoring',\n  overall_status: overallStatus,\n  wazuh_health: wazuhHealth,\n  manager_status: managerStatus,\n  cluster_status: {\n    status: clusterData?.status || 'unknown',\n    running: clusterData?.status === 'running' ? 'yes' : 'no',\n    enabled: true\n  },\n  issues,\n  requires_attention: overallStatus !== 'healthy',\n  check_duration_ms: responseTime,\n};\n\nreturn [{ json: out }];"
       },
-      "id": "analyze-health-results",
+      "id": "973dacdc-4595-48f6-91b7-e31884587233",
       "name": "Analyze Health Results",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 300]
+      "position": [
+        560,
+        -128
+      ]
     },
     {
       "parameters": {
@@ -174,7 +177,8 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "strict",
+            "version": 1
           },
           "conditions": [
             {
@@ -191,21 +195,27 @@
         },
         "options": {}
       },
-      "id": "check-attention-required",
+      "id": "1cb36f38-cb10-469e-a314-41253eeb7148",
       "name": "Check Attention Required",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1120, 300]
+      "position": [
+        768,
+        -128
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Create alert notification for health issues\nconst healthData = $input.first().json;\n\nconst statusEmoji = {\n  healthy: '✅',\n  warning: '⚠️',\n  degraded: '🔶',\n  critical: '🚨'\n};\n\nconst statusColor = {\n  healthy: '#00FF00',\n  warning: '#FFFF00',\n  degraded: '#FFA500',\n  critical: '#FF0000'\n};\n\nconst slackMessage = {\n  channel: '#infrastructure-alerts',\n  username: 'Wazuh Health Monitor',\n  icon_emoji: ':shield:',\n  attachments: [\n    {\n      color: statusColor[healthData.overall_status],\n      title: `${statusEmoji[healthData.overall_status]} Wazuh API Health Alert - ${healthData.overall_status.toUpperCase()}`,\n      fields: [\n        {\n          title: 'Check ID',\n          value: healthData.check_id,\n          short: true\n        },\n        {\n          title: 'Wazuh Server',\n          value: '172.20.18.14:55000',\n          short: true\n        },\n        {\n          title: 'Response Time',\n          value: `${healthData.check_duration_ms}ms`,\n          short: true\n        },\n        {\n          title: 'API Status',\n          value: healthData.wazuh_health.api_accessible ? 'Accessible' : 'Not Accessible',\n          short: true\n        },\n        {\n          title: 'Manager Status',\n          value: healthData.manager_status.status,\n          short: true\n        },\n        {\n          title: 'Cluster Running',\n          value: healthData.cluster_status.running || 'N/A',\n          short: true\n        }\n      ],\n      footer: 'Wazuh Health Monitor',\n      ts: Math.floor(new Date(healthData.timestamp).getTime() / 1000)\n    }\n  ]\n};\n\nif (healthData.issues.length > 0) {\n  slackMessage.attachments[0].fields.push({\n    title: 'Issues Detected',\n    value: healthData.issues.map(issue => `• ${issue}`).join('\\n'),\n    short: false\n  });\n}\n\nreturn {\n  slack_message: slackMessage,\n  alert_sent: true,\n  health_status: healthData.overall_status\n};"
+        "jsCode": "// Create alert notification for health issues\nconst healthData = $input.first().json;\n\nconst statusEmoji = { healthy: '✅', warning: '⚠️', degraded: '🔶', critical: '🚨' };\nconst statusColor = { healthy: '#00FF00', warning: '#FFFF00', degraded: '#FFA500', critical: '#FF0000' };\n\nconst slackMessage = {\n  channel: '#infrastructure-alerts',\n  username: 'Wazuh Health Monitor',\n  icon_emoji: ':shield:',\n  attachments: [\n    {\n      color: statusColor[healthData.overall_status],\n      title: `${statusEmoji[healthData.overall_status]} Wazuh API Health Alert - ${healthData.overall_status.toUpperCase()}`,\n      fields: [\n        { title: 'Check ID', value: healthData.check_id, short: true },\n        { title: 'Wazuh Server', value: healthData.wazuh_server, short: true },\n        { title: 'Response Time', value: `${healthData.check_duration_ms}ms`, short: true },\n        { title: 'API Status', value: healthData.wazuh_health.api_accessible ? 'Accessible' : 'Not Accessible', short: true },\n        { title: 'Manager Status', value: healthData.manager_status.status, short: true },\n        { title: 'Cluster Running', value: healthData.cluster_status.running || 'N/A', short: true }\n      ],\n      footer: 'Wazuh Health Monitor',\n      ts: Math.floor(new Date(healthData.timestamp).getTime() / 1000)\n    }\n  ]\n};\n\nif (healthData.issues.length > 0) {\n  slackMessage.attachments[0].fields.push({\n    title: 'Issues Detected',\n    value: healthData.issues.map(i => `• ${i}`).join('\\n'),\n    short: false\n  });\n}\n\nreturn { slack_message: slackMessage, alert_sent: true, health_status: healthData.overall_status };"
       },
-      "id": "create-health-alert",
+      "id": "951ee4af-aeeb-4bdf-a40b-e344e30fcb42",
       "name": "Create Health Alert",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1340, 200]
+      "position": [
+        1008,
+        -240
+      ]
     },
     {
       "parameters": {
@@ -213,7 +223,8 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "strict",
+            "version": 1
           },
           "conditions": [
             {
@@ -230,43 +241,43 @@
         },
         "options": {}
       },
-      "id": "check-critical-status",
+      "id": "23255314-ca70-4d8c-b2d1-b6e335158a41",
       "name": "Check Critical Status",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1340, 400]
+      "position": [
+        1008,
+        -32
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Attempt automatic remediation for critical issues\nconst healthData = $input.first().json;\n\nconst remediationActions = [];\n\n// Check if API connectivity issues need attention\nif (!healthData.wazuh_health.api_accessible) {\n  remediationActions.push({\n    action: 'check_network_connectivity',\n    reason: 'Wazuh API is not accessible',\n    priority: 'high'\n  });\n}\n\n// Check if manager restart is needed\nif (healthData.manager_status.status !== 'running') {\n  remediationActions.push({\n    action: 'restart_wazuh_manager',\n    reason: 'Wazuh manager is not running',\n    priority: 'high'\n  });\n}\n\n// Check if cluster needs attention\nif (healthData.cluster_status.enabled && healthData.cluster_status.running !== 'yes') {\n  remediationActions.push({\n    action: 'check_cluster_status',\n    reason: 'Cluster is not running properly',\n    priority: 'medium'\n  });\n}\n\nreturn {\n  remediation_required: remediationActions.length > 0,\n  remediation_actions: remediationActions,\n  health_data: healthData,\n  auto_remediation_timestamp: new Date().toISOString()\n};"
+        "jsCode": "// Attempt automatic remediation for critical issues\nconst healthData = $input.first().json;\n\nconst remediationActions = [];\n\nif (!healthData.wazuh_health.api_accessible) {\n  remediationActions.push({ action: 'check_network_connectivity', reason: 'Wazuh API is not accessible', priority: 'high' });\n}\n\nif (healthData.manager_status.status !== 'running') {\n  remediationActions.push({ action: 'restart_wazuh_manager', reason: 'Wazuh manager is not running', priority: 'high' });\n}\n\nif (healthData.cluster_status.enabled && healthData.cluster_status.running !== 'yes') {\n  remediationActions.push({ action: 'check_cluster_status', reason: 'Cluster is not running properly', priority: 'medium' });\n}\n\nreturn { remediation_required: remediationActions.length > 0, remediation_actions: remediationActions, health_data: healthData, auto_remediation_timestamp: new Date().toISOString() };"
       },
-      "id": "plan-auto-remediation",
+      "id": "8c36c59e-87ca-4ccb-85b1-7451037daec4",
       "name": "Plan Auto Remediation",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 300]
+      "position": [
+        1248,
+        -32
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Log health check results\nconst healthData = $input.first().json;\n\nconst logEntry = {\n  timestamp: healthData.timestamp,\n  check_id: healthData.check_id,\n  overall_status: healthData.overall_status,\n  wazuh_response_time: healthData.check_duration_ms,\n  api_accessible: healthData.wazuh_health.api_accessible,\n  manager_status: healthData.manager_status.status,\n  cluster_running: healthData.cluster_status.running,\n  issues_count: healthData.issues.length,\n  requires_attention: healthData.requires_attention\n};\n\nconsole.log(`Wazuh health check completed: ${healthData.check_id} - Status: ${healthData.overall_status}`);\n\nif (healthData.issues.length > 0) {\n  console.log(`Issues detected: ${healthData.issues.join(', ')}`);\n}\n\nreturn {\n  health_check_complete: true,\n  log_entry: logEntry,\n  next_check_in: '5 minutes'\n};"
+        "jsCode": "// Log health check results\nconst healthData = $input.first().json;\n\nconst logEntry = {\n  timestamp: healthData.timestamp,\n  check_id: healthData.check_id,\n  overall_status: healthData.overall_status,\n  wazuh_response_time: healthData.check_duration_ms,\n  api_accessible: healthData.wazuh_health.api_accessible,\n  manager_status: healthData.manager_status.status,\n  cluster_running: healthData.cluster_status.running,\n  issues_count: healthData.issues.length,\n  requires_attention: healthData.requires_attention\n};\n\nconsole.log(`Wazuh health check completed: ${healthData.check_id} - Status: ${healthData.overall_status}`);\nif (healthData.issues.length > 0) console.log(`Issues detected: ${healthData.issues.join(', ')}`);\n\nreturn { health_check_complete: true, log_entry: logEntry, next_check_in: '5 minutes' };"
       },
-      "id": "log-health-results",
+      "id": "526e4881-84ed-4a97-84d0-f70b30c7d7ae",
       "name": "Log Health Results",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1780, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Handle health check errors\nconst error = $input.first();\nconst initData = $('Initialize Health Check').first()?.json;\n\nconsole.error('Wazuh health check failed:', error);\n\nconst errorReport = {\n  check_id: initData?.check_id || 'unknown',\n  error_timestamp: new Date().toISOString(),\n  error_type: 'health_check_failure',\n  error_message: error.message || 'Unknown error',\n  wazuh_server: '172.20.18.14:55000',\n  status: 'error',\n  requires_manual_intervention: true\n};\n\n// Create critical alert for health check failure\nconst criticalAlert = {\n  channel: '#critical-alerts',\n  username: 'Wazuh Monitor CRITICAL',\n  icon_emoji: ':rotating_light:',\n  text: '🚨 CRITICAL: Wazuh API Health Check Failed',\n  attachments: [\n    {\n      color: '#FF0000',\n      title: 'Wazuh API Health Check Failure',\n      fields: [\n        {\n          title: 'Error',\n          value: errorReport.error_message,\n          short: false\n        },\n        {\n          title: 'Wazuh Server',\n          value: '172.20.18.14:55000',\n          short: true\n        },\n        {\n          title: 'Check ID',\n          value: errorReport.check_id,\n          short: true\n        }\n      ],\n      footer: 'IMMEDIATE ACTION REQUIRED'\n    }\n  ]\n};\n\nreturn {\n  error_report: errorReport,\n  critical_alert: criticalAlert,\n  health_check_failed: true\n};"
-      },
-      "id": "handle-health-error",
-      "name": "Handle Health Error",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [900, 500]
+      "position": [
+        1488,
+        -128
+      ]
     }
   ],
+  "pinData": {},
   "connections": {
     "Health Check Schedule": {
       "main": [
@@ -283,17 +294,7 @@
       "main": [
         [
           {
-            "node": "Check Wazuh Health",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Get Wazuh Token",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Get Cluster Status",
             "type": "main",
             "index": 0
           }
@@ -304,41 +305,23 @@
       "main": [
         [
           {
-            "node": "Check Wazuh Connectivity",
+            "node": "Wazuh Cluster Status",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Get Cluster Status",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ],
-      "error": [
-        [
-          {
-            "node": "Handle Health Error",
+            "node": "Check Wazuh Connectivity",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Check Wazuh Health": {
+    "Wazuh Cluster Status": {
       "main": [
         [
           {
-            "node": "Analyze Health Results",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ],
-      "error": [
-        [
-          {
-            "node": "Handle Health Error",
+            "node": "Wait for Health Checks",
             "type": "main",
             "index": 0
           }
@@ -349,33 +332,15 @@
       "main": [
         [
           {
-            "node": "Analyze Health Results",
+            "node": "Wait for Health Checks",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ],
-      "error": [
-        [
-          {
-            "node": "Handle Health Error",
-            "type": "main",
-            "index": 0
+            "index": 1
           }
         ]
       ]
     },
-    "Get Cluster Status": {
+    "Wait for Health Checks": {
       "main": [
-        [
-          {
-            "node": "Analyze Health Results",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ],
-      "error": [
         [
           {
             "node": "Analyze Health Results",
@@ -458,51 +423,35 @@
           }
         ]
       ]
-    },
-    "Handle Health Error": {
-      "main": [
-        [
-          {
-            "node": "Log Health Results",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
-    "timezone": "UTC",
-    "saveManualExecutions": true,
-    "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": {
-      "enabled": true
-    }
+    "executionOrder": "v1"
   },
-  "versionId": "1",
+  "versionId": "090f5a35-b0d7-48fa-af73-2dd3fd4c2c3f",
   "meta": {
-    "templateCredsSetupCompleted": true
+    "instanceId": "cf43939745564fea323e56207dbc9830b417d9049a75545776753b8e177cb4e9"
   },
-  "id": "wazuh-api-health-monitoring-workflow",
+  "id": "pgWFPYnUvDcZsRu4",
   "tags": [
     {
-      "createdAt": "2025-01-21T18:00:00.000Z",
-      "updatedAt": "2025-01-21T18:00:00.000Z",
-      "id": "wazuh-integration",
-      "name": "Wazuh Integration"
-    },
-    {
-      "createdAt": "2025-01-21T18:00:00.000Z",
-      "updatedAt": "2025-01-21T18:00:00.000Z",
-      "id": "health-monitoring",
+      "createdAt": "2025-08-27T20:16:58.855Z",
+      "updatedAt": "2025-08-27T20:16:58.855Z",
+      "id": "KQzy9JlLWYmlaGzb",
       "name": "Health Monitoring"
     },
     {
-      "createdAt": "2025-01-21T18:00:00.000Z",
-      "updatedAt": "2025-01-21T18:00:00.000Z",
-      "id": "infrastructure",
+      "createdAt": "2025-08-27T20:16:59.036Z",
+      "updatedAt": "2025-08-27T20:16:59.036Z",
+      "id": "ZcFV07GjtpnU9cAW",
       "name": "Infrastructure"
+    },
+    {
+      "createdAt": "2025-08-27T12:24:24.334Z",
+      "updatedAt": "2025-08-27T12:24:24.334Z",
+      "id": "zU35DaPTj2ZuF5t9",
+      "name": "Wazuh Integration"
     }
   ]
 }

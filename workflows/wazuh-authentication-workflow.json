@@ -5,83 +5,119 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "bridge-auth",
-        "responseMode": "onReceived",
         "options": {}
       },
-      "id": "auth-webhook-trigger",
+      "id": "e6da5917-6cb1-419f-b96c-5e8ace8aa54e",
       "name": "Auth Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [240, 300],
+      "position": [
+        288,
+        272
+      ],
       "webhookId": "bridge-auth"
     },
     {
       "parameters": {
-        "jsCode": "// Validate authentication request; fallback to environment variables\nconst req = $input.first().json;\nconst body = req.body || {};\n\nconst username = body.username || $env.WAZUH_API_USER;\nconst password = body.password || $env.WAZUH_API_PASSWORD;\nconst wazuhUrl = ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate';\n\nif (!username || !password) {\n  return { error: 'Missing credentials: set WAZUH_API_USER/PASSWORD', status: 400 }\n}\n\nreturn {\n  username,\n  password,\n  wazuh_url: wazuhUrl,\n  timestamp: new Date().toISOString()\n};"
+        "jsCode": "// Validate authentication request; fallback to environment variables\nconst req = $input.first().json || {};\nconst body = req.body || req || {};\n\nconst username = body.username || $env.WAZUH_API_USER || 'wazuh';\nconst password = body.password || $env.WAZUH_API_PASSWORD;\nconst baseUrl  = ($env.WAZUH_API_URL || 'https://172.20.18.14:55000').replace(/\\/$/, '');\n\nif (!password) {\n  return { success: false, status: 400, error: 'Missing credentials: set WAZUH_API_PASSWORD or provide password in request body' };\n}\n\nreturn {\n  success: true,\n  username,\n  password,\n  wazuh_url: baseUrl + '/security/user/authenticate',\n  timestamp: new Date().toISOString()\n};"
       },
-      "id": "validate-auth-request",
+      "id": "45b1eccf-85b3-43d9-a436-15bf13013244",
       "name": "Validate Auth Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 300]
+      "position": [
+        512,
+        272
+      ]
     },
     {
       "parameters": {
-        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate?raw=true' }}",
-        "authentication": "none",
-        "requestMethod": "POST",
+        "method": "POST",
+        "url": "={{ $json.wazuh_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "Content-Type",
               "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "={{ 'Basic ' + $base64(($env.WAZUH_API_USER || 'wazuh') + ':' + ($env.WAZUH_API_PASSWORD || '')) }}"
             }
           ]
         },
-        "sendBody": false,
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "username",
+              "value": "={{ $json.username }}"
+            },
+            {
+              "name": "password",
+              "value": "={{ $json.password }}"
+            }
+          ]
+        },
         "options": {
-          "timeout": 30000,
-          "retry": {
-            "enabled": true,
-            "maxRetries": 3,
-            "retryInterval": 1000
-          },
-          "allowUnauthorizedCerts": true
+          "allowUnauthorizedCerts": true,
+          "timeout": 30000
         }
       },
-      "id": "wazuh-auth-request",
+      "id": "67d5afff-f0b9-46c5-a53c-f5f2b6d1ed1e",
       "name": "Wazuh Auth Request",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [680, 300]
+      "position": [
+        736,
+        272
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "8Cc3P9EWCNkZvPOC",
+          "name": "WAZUH_API"
+        }
+      }
     },
     {
       "parameters": {
-        "jsCode": "// Process authentication response\nconst input = $input.first();\nconst wazuhServer = $env.WAZUH_API_URL || 'https://172.20.18.14:55000';\n\n// The response should be a raw JWT token string\nlet token = '';\nif (input.json && typeof input.json === 'string') {\n  token = input.json.trim();\n} else if (input.binary && input.binary.data) {\n  token = input.binary.data.toString().trim();\n} else {\n  token = String(input.json || '').trim();\n}\n\nif (token && token.length > 50) {\n  return {\n    success: true,\n    message: 'Successfully authenticated with Wazuh API using raw token',\n    wazuh_server: wazuhServer,\n    authenticated_at: new Date().toISOString(),\n    token: token\n  };\n} else {\n  return {\n    success: false,\n    error: 'Authentication failed - no valid token received',\n    wazuh_server: wazuhServer,\n    attempted_at: new Date().toISOString(),\n    response: input\n  };\n}"
+        "jsCode": "// Process authentication response (JSON first, raw fallback)\nconst input = $input.first();\nconst body  = input.json;\nconst baseUrl  = ($env.WAZUH_API_URL || 'https://172.20.18.14:55000').replace(/\\/$/, '');\n\nlet token = body?.data?.token;\nif (!token && typeof body === 'string') token = body.trim();\nif (!token && body?.token) token = String(body.token).trim();\n\nif (token && token.length > 20) {\n  return {\n    success: true,\n    message: 'Authenticated with Wazuh API',\n    wazuh_server: baseUrl,\n    authenticated_at: new Date().toISOString(),\n    token\n  };\n}\n\nreturn {\n  success: false,\n  status: 401,\n  error: 'Authentication failed - no valid token received',\n  wazuh_server: baseUrl,\n  attempted_at: new Date().toISOString(),\n  response_preview: typeof body === 'object' ? JSON.stringify(body).slice(0, 300) : String(body).slice(0, 300)\n};"
       },
-      "id": "process-auth-response",
+      "id": "50e382dd-e2fb-4716-bd87-1b0e90482601",
       "name": "Process Auth Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 300]
+      "position": [
+        960,
+        272
+      ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ $json }}"
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": "={{ $json.success ? 200 : ($json.status || 401) }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
       },
-      "id": "auth-webhook-response",
+      "id": "e7c6d6da-40cd-478d-904f-d2f3ec4c19a6",
       "name": "Auth Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [1120, 300]
+      "position": [
+        1168,
+        272
+      ]
     }
   ],
+  "pinData": {},
   "connections": {
     "Auth Webhook Trigger": {
       "main": [
@@ -128,29 +164,14 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
-    "timezone": "UTC",
-    "saveManualExecutions": true,
-    "callerPolicy": "workflowsFromSameOwner"
+    "timezone": "UTC"
   },
-  "versionId": "1",
+  "versionId": "c3197e15-d0de-49b1-b453-39602e58481c",
   "meta": {
-    "templateCredsSetupCompleted": true
+    "instanceId": "cf43939745564fea323e56207dbc9830b417d9049a75545776753b8e177cb4e9"
   },
-  "id": "wazuh-authentication-workflow",
-  "tags": [
-    {
-      "createdAt": "2025-01-21T18:00:00.000Z",
-      "updatedAt": "2025-01-21T18:00:00.000Z",
-      "id": "wazuh-integration",
-      "name": "Wazuh Integration"
-    },
-    {
-      "createdAt": "2025-01-21T18:00:00.000Z",
-      "updatedAt": "2025-01-21T18:00:00.000Z",
-      "id": "authentication",
-      "name": "Authentication"
-    }
-  ]
+  "id": "kiBSPL6xSjd5hiCg",
+  "tags": []
 }

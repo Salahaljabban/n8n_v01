@@ -2,45 +2,23 @@
   "name": "Wazuh Alert Monitoring",
   "nodes": [
     {
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "minutes",
-              "minutesInterval": 2
-            }
-          ]
-        }
-      },
-      "id": "alert-polling-trigger",
+      "parameters": {},
+      "id": "b8414d43-43ef-4c81-84f7-348199e7ccce",
       "name": "Alert Polling Trigger",
       "type": "n8n-nodes-base.cron",
       "typeVersion": 1,
-      "position": [240, 300]
+      "position": [
+        -2848,
+        112
+      ]
     },
     {
       "parameters": {
-        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/' }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "requestMethod": "GET",
-        "options": {
-          "timeout": 10000,
-          "allowUnauthorizedCerts": true
-        }
-      },
-      "id": "api-health-check",
-      "name": "Wazuh API Health Check",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [460, 300]
-    },
-    {
-      "parameters": {
-        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/security/user/authenticate?raw=true' }}",
+        "method": "POST",
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000').replace(/\\/$/, '') + '/security/user/authenticate' }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpBasicAuth",
-        "requestMethod": "POST",
+        "provideSslCertificates": true,
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -50,39 +28,150 @@
             }
           ]
         },
-        "sendBody": false,
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "username",
+              "value": "wazuh"
+            },
+            {
+              "name": "password",
+              "value": "MDymLhH.E?RZFtuUVV2KMW01X3b99y69"
+            }
+          ]
+        },
         "options": {
-          "timeout": 20000,
-          "retry": {
-            "enabled": true,
-            "maxRetries": 2,
-            "retryInterval": 1000
-          },
-          "allowUnauthorizedCerts": true
+          "allowUnauthorizedCerts": true,
+          "timeout": 20000
         }
       },
-      "id": "get-wazuh-token",
+      "id": "5f1aa686-280a-47a2-a136-64eecff58512",
       "name": "Get Wazuh Token",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [900, 180]
+      "position": [
+        -2592,
+        112
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "8Cc3P9EWCNkZvPOC",
+          "name": "WAZUH_API"
+        },
+        "httpSslAuth": {
+          "id": "pMoxVfYrKTxHGQY3",
+          "name": "SSL Certificates account"
+        }
+      }
     },
     {
       "parameters": {
-        "jsCode": "// Validate Wazuh API health before proceeding\nconst healthResponse = $input.first().json;\nconst sessionData = $('Alert Polling Trigger').first().json;\n\nlet apiHealthy = false;\nlet healthStatus = 'unknown';\n\ntry {\n  // Check if Wazuh API responded successfully\n  if (healthResponse && (healthResponse.status === 200 || healthResponse.statusCode === 200)) {\n    apiHealthy = true;\n    healthStatus = 'healthy';\n  } else {\n    healthStatus = 'error';\n  }\n} catch (error) {\n  console.error('Wazuh API health check failed:', error);\n  healthStatus = 'error';\n}\n\nconsole.log(`Wazuh API health status: ${healthStatus}`);\n\nif (!apiHealthy) {\n  console.warn('Wazuh API is not healthy, skipping alert polling');\n  return {\n    api_healthy: false,\n    health_status: healthStatus,\n    skip_polling: true,\n    session_id: sessionData.session_id,\n    timestamp: new Date().toISOString()\n  };\n}\n\nreturn {\n  api_healthy: true,\n  health_status: healthStatus,\n  proceed_with_polling: true,\n  session_id: sessionData.session_id,\n  timestamp: new Date().toISOString()\n};"
+        "conditions": {
+          "options": {
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !!$json.data && !!$json.data.token }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "id": "validate-api-health",
-      "name": "Validate API Health",
+      "id": "51b3fecc-3645-41d0-933b-28d9269c8880",
+      "name": "Token OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2368,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000').replace(/\\/$/, '') + '/manager/status' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $node[\"Get Wazuh Token\"].json[\"data\"][\"token\"] }}"
+            },
+            {
+              "name": "User-Agent",
+              "value": "n8n-alert-monitor/1.0"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "timeout": 12000
+        }
+      },
+      "id": "02e5fdc9-4b51-46ff-a9b9-4212f8169c2d",
+      "name": "Wazuh API Health Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -2144,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Evaluate health from /manager/status\nconst j = $input.first().json || {};\nconst item = j.data?.affected_items?.[0] || {};\nconst required = ['wazuh-apid','wazuh-db','wazuh-analysisd','wazuh-remoted','wazuh-modulesd','wazuh-syscheckd'];\nconst down = required.filter(k => item[k] !== 'running');\nreturn [{ json: { api_healthy: down.length === 0, down, raw: j } }];"
+      },
+      "id": "25fe755a-9be5-432e-8afb-ddc8de244412",
+      "name": "Evaluate API Health",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [680, 300]
+      "position": [
+        -1920,
+        48
+      ]
     },
     {
       "parameters": {
-        "url": "={{ ($env.WAZUH_API_URL || 'https://172.20.18.14:55000') + '/alerts' }}",
+        "conditions": {
+          "options": {
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.api_healthy }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7b8011fc-6c5a-484d-8226-b60d9fceb6b8",
+      "name": "API Healthy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1712,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.WAZUH_INDEXER_URL || 'https://172.20.18.14:9200').replace(/\\/$/, '') + '/wazuh-alerts-4.x-*/_search' }}",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "requestMethod": "GET",
+        "genericAuthType": "httpBasicAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -92,47 +181,84 @@
             },
             {
               "name": "Authorization",
-              "value": "={{ 'Bearer ' + $('Get Wazuh Token').first().json }}"
+              "value": "{{'Basic ' + ('kibanaro' + ':' + 'J*4w.9TV+gfheXR7n98PF+Q1DSaBv9Mc')}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "size",
+              "value": 100
+            },
+            {
+              "name": "sort",
+              "value": [
+                {
+                  "@timestamp": {
+                    "order": "desc"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "query",
+              "value": {
+                "range": {
+                  "@timestamp": {
+                    "gte": "now-5m"
+                  }
+                }
+              }
             }
           ]
         },
         "options": {
-          "timeout": 30000,
-          "retry": {
-            "enabled": true,
-            "maxRetries": 2,
-            "retryInterval": 5000
-          },
-          "allowUnauthorizedCerts": true
+          "allowUnauthorizedCerts": true,
+          "timeout": 45000
         }
       },
-      "id": "fetch-buffered-alerts",
+      "id": "34609e32-b990-46a9-80cc-85d3fd2b3c89",
       "name": "Fetch Wazuh Alerts",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [900, 300]
+      "position": [
+        -1488,
+        48
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "35weeG1qVtbwojoV",
+          "name": "Wazuh dashboard - Indexer"
+        },
+        "httpSslAuth": {
+          "id": "pMoxVfYrKTxHGQY3",
+          "name": "SSL Certificates account"
+        }
+      }
     },
     {
       "parameters": {
-        "jsCode": "// Process Wazuh alerts\nconst response = $input.first().json;\nconst healthCheck = $('Validate API Health').first().json;\n\nif (!response.data || !response.data.affected_items || response.data.affected_items.length === 0) {\n  return {\n    no_alerts: true,\n    message: 'No new alerts from Wazuh API',\n    api_healthy: healthCheck.api_healthy,\n    check_time: new Date().toISOString()\n  };\n}\n\n// Process each alert\nconst processedAlerts = response.data.affected_items.map(alert => {\n  return {\n    alert_id: alert.id,\n    timestamp: alert.timestamp,\n    rule_id: alert.rule?.id,\n    rule_level: alert.rule?.level,\n    rule_description: alert.rule?.description,\n    agent_name: alert.agent?.name,\n    agent_ip: alert.agent?.ip,\n    location: alert.location,\n    full_log: alert.full_log,\n    severity: alert.rule?.level >= 10 ? 'high' : alert.rule?.level >= 7 ? 'medium' : 'low',\n    processed_at: new Date().toISOString(),\n    source: 'wazuh_api'\n  };\n});\n\nreturn {\n  alerts_found: true,\n  alert_count: response.data.affected_items.length,\n  alerts: processedAlerts,\n  api_healthy: healthCheck.api_healthy,\n  processing_time: new Date().toISOString()\n};"
+        "jsCode": "// Normalize Indexer results\nconst res = $input.first().json || {};\nconst hits = res.hits?.hits || [];\nif (!hits.length) return [{ json: { alerts_found: false, alert_count: 0, message: 'No alerts' } }];\nconst alerts = hits.map(h => { const s = h._source || {}; const lvl = s.rule?.level; return {\n  alert_id: h._id,\n  timestamp: s['@timestamp'],\n  rule_id: s.rule?.id,\n  rule_level: lvl,\n  rule_description: s.rule?.description,\n  agent_name: s.agent?.name,\n  agent_ip: s.agent?.ip,\n  location: s.location,\n  full_log: s.full_log,\n  severity: lvl >= 10 ? 'high' : lvl >= 7 ? 'medium' : 'low',\n  source: 'wazuh_indexer'\n};});\nreturn [{ json: { alerts_found: true, alert_count: alerts.length, alerts, processed_at: new Date().toISOString() } }];"
       },
-      "id": "process-alerts",
+      "id": "76d8eff4-3d7e-448c-8411-f2cff34aa202",
       "name": "Process Alerts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, 300]
+      "position": [
+        -1264,
+        48
+      ]
     },
     {
       "parameters": {
         "conditions": {
           "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "loose"
           },
           "conditions": [
             {
-              "id": "has-alerts",
               "leftValue": "={{ $json.alerts_found }}",
               "rightValue": true,
               "operator": {
@@ -145,33 +271,36 @@
         },
         "options": {}
       },
-      "id": "check-alerts-exist",
-      "name": "Check Alerts Exist",
+      "id": "63c888ec-b8ef-42c1-8a04-056f7ec550f3",
+      "name": "Has Alerts?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1340, 300]
+      "position": [
+        -1040,
+        48
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Split alerts for individual processing\nconst data = $input.first().json;\n\nif (!data.alerts || data.alerts.length === 0) {\n  return [];\n}\n\n// Return each alert as a separate item for parallel processing\nreturn data.alerts.map(alert => ({\n  ...alert,\n  total_alerts_in_batch: data.alert_count,\n  batch_processing_time: data.processing_time\n}));"
+        "jsCode": "// Fan-out per alert\nconst d = $input.first().json; if (!d.alerts?.length) return []; return d.alerts.map(a => ({ json: a }));"
       },
-      "id": "split-alerts",
+      "id": "966c3f62-48dc-40b5-b12a-0d16a43a64c8",
       "name": "Split Alerts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 200]
+      "position": [
+        -832,
+        -16
+      ]
     },
     {
       "parameters": {
         "conditions": {
           "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "loose"
           },
           "conditions": [
             {
-              "id": "high-severity",
               "leftValue": "={{ $json.severity }}",
               "rightValue": "high",
               "operator": {
@@ -184,17 +313,19 @@
         },
         "options": {}
       },
-      "id": "check-high-severity",
-      "name": "Check High Severity",
+      "id": "665dcf20-9a7e-425b-ac4a-aff747175ec9",
+      "name": "High Severity?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1780, 200]
+      "position": [
+        -608,
+        -16
+      ]
     },
     {
       "parameters": {
+        "method": "POST",
         "url": "http://n8n:5678/webhook/high-priority-alert",
-        "authentication": "none",
-        "requestMethod": "POST",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -205,72 +336,57 @@
           ]
         },
         "sendBody": true,
-        "bodyContentType": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "alert",
+              "value": "={{ $json }}"
+            }
+          ]
+        },
         "options": {
           "timeout": 15000
         }
       },
-      "id": "trigger-high-priority-workflow",
+      "id": "c177c0aa-279d-4193-a3e6-19291bfaa5a7",
       "name": "Trigger High Priority Workflow",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [2000, 100]
+      "position": [
+        -384,
+        -96
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Log standard alert processing\nconst alert = $input.first().json;\n\nconsole.log(`Processing standard alert: ${alert.alert_id} - ${alert.rule_description}`);\n\nreturn {\n  alert_id: alert.alert_id,\n  severity: alert.severity,\n  action: 'logged',\n  processed_at: new Date().toISOString(),\n  message: `Standard alert ${alert.alert_id} logged successfully`\n};"
+        "jsCode": "const a=$input.first().json; return [{json:{msg:`Standard alert logged: ${a.alert_id}`, alert_id:a.alert_id, severity:a.severity, logged_at:new Date().toISOString()}}];"
       },
-      "id": "log-standard-alert",
+      "id": "2a56752e-7c56-43a6-8e89-f8b673b4bae1",
       "name": "Log Standard Alert",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2000, 300]
+      "position": [
+        -384,
+        80
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Handle Wazuh API errors\nconst error = $input.first();\n\nconsole.error('Wazuh API health check failed:', error);\n\nreturn {\n  error: true,\n  message: 'Wazuh API is not accessible',\n  timestamp: new Date().toISOString(),\n  retry_in_next_cycle: true,\n  wazuh_api: '172.20.18.14:55000'\n};"
+        "jsCode": "const e=$input.first(); return [{json:{error:true,message:'Token or API health failed',detail:e?.json||e,ts:new Date().toISOString()}}];"
       },
-      "id": "handle-api-error",
-      "name": "Handle API Error",
+      "id": "7bb0530c-df92-4fea-ba04-4d5f678174f8",
+      "name": "Handle API/Error",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [680, 480]
+      "position": [
+        -2144,
+        272
+      ]
     }
   ],
+  "pinData": {},
   "connections": {
     "Alert Polling Trigger": {
-      "main": [
-        [
-          {
-            "node": "Wazuh API Health Check",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Wazuh API Health Check": {
-      "main": [
-        [
-          {
-            "node": "Validate API Health",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ],
-      "error": [
-        [
-          {
-            "node": "Handle API Error",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate API Health": {
       "main": [
         [
           {
@@ -285,16 +401,70 @@
       "main": [
         [
           {
-            "node": "Fetch Wazuh Alerts",
+            "node": "Token OK?",
             "type": "main",
             "index": 0
           }
         ]
-      ],
-      "error": [
+      ]
+    },
+    "Token OK?": {
+      "main": [
         [
           {
-            "node": "Handle API Error",
+            "node": "Wazuh API Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle API/Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wazuh API Health Check": {
+      "main": [
+        [
+          {
+            "node": "Evaluate API Health",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Handle API/Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate API Health": {
+      "main": [
+        [
+          {
+            "node": "API Healthy?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Healthy?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Wazuh Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle API/Error",
             "type": "main",
             "index": 0
           }
@@ -308,6 +478,11 @@
             "node": "Process Alerts",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Handle API/Error",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -316,14 +491,14 @@
       "main": [
         [
           {
-            "node": "Check Alerts Exist",
+            "node": "Has Alerts?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Check Alerts Exist": {
+    "Has Alerts?": {
       "main": [
         [
           {
@@ -331,22 +506,21 @@
             "type": "main",
             "index": 0
           }
-        ],
-        []
+        ]
       ]
     },
     "Split Alerts": {
       "main": [
         [
           {
-            "node": "Check High Severity",
+            "node": "High Severity?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Check High Severity": {
+    "High Severity?": {
       "main": [
         [
           {
@@ -365,30 +539,15 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
-    "timezone": "UTC",
-    "saveManualExecutions": true,
-    "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": "handle-api-error"
+    "executionOrder": "v1"
   },
-  "versionId": "1",
+  "versionId": "1a6a410f-dfe5-420d-9d75-cf22c74e77cc",
   "meta": {
-    "templateCredsSetupCompleted": true
+    "templateCredsSetupCompleted": true,
+    "instanceId": "cf43939745564fea323e56207dbc9830b417d9049a75545776753b8e177cb4e9"
   },
-  "id": "wazuh-direct-alert-monitoring-workflow",
-  "tags": [
-    {
-      "createdAt": "2025-01-21T18:00:00.000Z",
-      "updatedAt": "2025-01-21T18:00:00.000Z",
-      "id": "wazuh-integration",
-      "name": "Wazuh Integration"
-    },
-    {
-      "createdAt": "2025-01-21T18:00:00.000Z",
-      "updatedAt": "2025-01-21T18:00:00.000Z",
-      "id": "alert-monitoring",
-      "name": "Alert Monitoring"
-    }
-  ]
+  "id": "zqlId6e2x2kYk8Oj",
+  "tags": []
 }

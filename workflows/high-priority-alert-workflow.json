@@ -27,7 +27,7 @@
     },
     {
       "parameters": {
-        "url": "http://foundation-sec-ai:8000/analyze",
+        "url": "http://foundation-sec:8000/v1/chat/completions",
         "authentication": "none",
         "requestMethod": "POST",
         "sendHeaders": true,
@@ -41,7 +41,7 @@
         },
         "sendBody": true,
         "bodyContentType": "json",
-        "jsonBody": "={\n  \"prompt\": \"{{ $json.ai_analysis_prompt }}\",\n  \"context\": {\n    \"alert_id\": \"{{ $json.alert_id }}\",\n    \"severity\": \"{{ $json.severity }}\",\n    \"rule_level\": {{ $json.rule_level }},\n    \"agent_name\": \"{{ $json.agent_name }}\",\n    \"source_ip\": \"{{ $json.agent_ip }}\"\n  },\n  \"analysis_type\": \"security_threat_assessment\"\n}",
+        "jsonBody": "={\n  \"model\": \"foundation-sec\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a senior security analyst. Provide concise, actionable threat assessments and recommended response steps.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $json.ai_analysis_prompt }}\"\n    }\n  ],\n  \"max_tokens\": 512,\n  \"temperature\": 0.7\n}",
         "options": {
           "timeout": 45000,
           "retry": {
@@ -59,7 +59,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Process AI analysis results\nconst aiResponse = $input.first().json;\nconst originalAlert = $('Enrich Alert').first().json;\n\nlet threatLevel = 'medium';\nlet recommendedActions = [];\nlet aiAnalysis = '';\n\nif (aiResponse && aiResponse.analysis) {\n  aiAnalysis = aiResponse.analysis;\n  \n  // Extract threat level from AI response\n  if (aiAnalysis.toLowerCase().includes('critical') || aiAnalysis.toLowerCase().includes('severe')) {\n    threatLevel = 'critical';\n  } else if (aiAnalysis.toLowerCase().includes('high') || aiAnalysis.toLowerCase().includes('urgent')) {\n    threatLevel = 'high';\n  } else if (aiAnalysis.toLowerCase().includes('low') || aiAnalysis.toLowerCase().includes('minimal')) {\n    threatLevel = 'low';\n  }\n  \n  // Extract recommended actions\n  if (aiAnalysis.toLowerCase().includes('block') || aiAnalysis.toLowerCase().includes('isolate')) {\n    recommendedActions.push('block_ip');\n  }\n  if (aiAnalysis.toLowerCase().includes('investigate') || aiAnalysis.toLowerCase().includes('review')) {\n    recommendedActions.push('manual_investigation');\n  }\n  if (aiAnalysis.toLowerCase().includes('notify') || aiAnalysis.toLowerCase().includes('alert')) {\n    recommendedActions.push('send_notification');\n  }\n}\n\nreturn {\n  ...originalAlert,\n  ai_analysis: {\n    analysis_text: aiAnalysis,\n    threat_level: threatLevel,\n    recommended_actions: recommendedActions,\n    confidence_score: aiResponse.confidence || 0.8,\n    analysis_timestamp: new Date().toISOString()\n  },\n  processing_status: 'ai_analysis_complete',\n  next_action_required: recommendedActions.length > 0\n};"
+        "jsCode": "// Process AI analysis results (OpenAI-style response)\nconst aiResponse = $input.first().json;\nconst originalAlert = $('Enrich Alert').first().json;\n\n// Extract assistant text from choices[0].message.content\nconst aiAnalysis = (aiResponse && aiResponse.choices && aiResponse.choices[0] && aiResponse.choices[0].message && aiResponse.choices[0].message.content)\n  ? String(aiResponse.choices[0].message.content)\n  : '';\n\nlet threatLevel = 'medium';\nlet recommendedActions = [];\n\nif (aiAnalysis) {\n  const text = aiAnalysis.toLowerCase();\n\n  // Extract threat level from AI response\n  if (text.includes('critical') || text.includes('severe')) {\n    threatLevel = 'critical';\n  } else if (text.includes('high') || text.includes('urgent')) {\n    threatLevel = 'high';\n  } else if (text.includes('low') || text.includes('minimal')) {\n    threatLevel = 'low';\n  }\n\n  // Extract recommended actions\n  if (text.includes('block') || text.includes('isolate')) {\n    recommendedActions.push('block_ip');\n  }\n  if (text.includes('investigate') || text.includes('review')) {\n    recommendedActions.push('manual_investigation');\n  }\n  if (text.includes('notify') || text.includes('alert')) {\n    recommendedActions.push('send_notification');\n  }\n}\n\nreturn {\n  ...originalAlert,\n  ai_analysis: {\n    analysis_text: aiAnalysis,\n    threat_level: threatLevel,\n    recommended_actions: recommendedActions,\n    confidence_score: 0.8,\n    analysis_timestamp: new Date().toISOString()\n  },\n  processing_status: 'ai_analysis_complete',\n  next_action_required: recommendedActions.length > 0\n};"
       },
       "id": "process-ai-analysis",
       "name": "Process AI Analysis",
